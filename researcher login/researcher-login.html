@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Researcher Login</title>
+    <link rel="stylesheet" href="./researcher-login.css" />
+  </head>
+  <body>
+    <main class="page" data-login-root data-login-success="/dashboard">
+      <section class="shell">
+        <div class="brand-block">
+          <h1 class="brand">SurveyLab</h1>
+        </div>
+
+        <div class="card">
+          <div class="copy-block">
+            <h2 class="title">Log in to SurveyLab</h2>
+            <p class="subtitle">
+              For researchers only. Participants join via survey link.
+            </p>
+          </div>
+
+          <form class="form" id="researcher-login-form">
+            <div class="field">
+              <label class="label" for="researcher-email">Email</label>
+              <div class="input-shell">
+                <span class="icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path
+                      d="M4 6h16v12H4z"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                    <path
+                      d="m4 7 8 6 8-6"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <input
+                  id="researcher-email"
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  class="input"
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="label" for="researcher-password">Password</label>
+              <div class="input-shell">
+                <span class="icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <rect
+                      x="5"
+                      y="11"
+                      width="14"
+                      height="10"
+                      rx="2"
+                      stroke-width="1.8"
+                    ></rect>
+                    <path
+                      d="M8 11V8a4 4 0 1 1 8 0v3"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    ></path>
+                  </svg>
+                </span>
+                <input
+                  id="researcher-password"
+                  name="password"
+                  type="password"
+                  placeholder="••••••••"
+                  autocomplete="current-password"
+                  class="input"
+                  data-password-input
+                />
+                <button
+                  type="button"
+                  class="toggle"
+                  data-password-toggle
+                  aria-controls="researcher-password"
+                  aria-label="Show password"
+                  aria-pressed="false"
+                >
+                  <span class="toggle-icon" data-eye-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path
+                        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      ></path>
+                      <circle cx="12" cy="12" r="3" stroke-width="1.8"></circle>
+                    </svg>
+                  </span>
+                  <span class="toggle-icon" data-eye-closed hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path
+                        d="M3 3 21 21"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      ></path>
+                      <path
+                        d="M10.6 6.2A11.1 11.1 0 0 1 12 6c6.5 0 10 6 10 6a17.6 17.6 0 0 1-3.1 3.8"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      ></path>
+                      <path
+                        d="M6.7 6.7C4 8.5 2 12 2 12a17.6 17.6 0 0 0 10 6c1.5 0 2.9-.3 4.1-.8"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      ></path>
+                      <path
+                        d="M9.9 9.9A3 3 0 0 0 14.1 14.1"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      ></path>
+                    </svg>
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div class="meta-row">
+              <label class="checkbox-label">
+                <input type="checkbox" name="remember" class="checkbox" />
+                <span>Remember me</span>
+              </label>
+
+              <button
+                type="button"
+                class="link-button"
+                data-route="/forgot-password"
+              >
+                Forgot password?
+              </button>
+            </div>
+
+            <button type="submit" class="primary-button">Log in</button>
+          </form>
+        </div>
+
+        <div class="support-card">
+          <p class="support-text">New researcher here?</p>
+          <button
+            type="button"
+            class="support-button"
+            data-route="/register"
+            data-file-route="./researcher-register.html"
+          >
+            Sign up
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./researcher-login.js"></script>
+  </body>
+</html>

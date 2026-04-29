@@ -1,0 +1,18 @@
+{
+  "users": [
+    {
+      "email": "chengtaowu3@gmail.com",
+      "password": "123",
+      "name": "looo",
+      "updatedAt": "2026-04-19T02:07:07.392522+00:00",
+      "createdAt": "2026-04-18T10:38:55.602352+00:00"
+    },
+    {
+      "email": "guowangz46@gmail.com",
+      "password": "Zhangguowang0226",
+      "name": "Alex Zhang",
+      "updatedAt": "2026-04-20T05:40:43.612434+00:00",
+      "createdAt": "2026-04-20T05:40:43.612434+00:00"
+    }
+  ]
+}

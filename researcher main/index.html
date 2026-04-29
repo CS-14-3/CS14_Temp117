@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survey Architect - Admin</title>
+
+  <!-- 引入 Tailwind CSS (处理 95% 的样式 and 移动端响应式) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 引入 Lucide 图标库 (高仿 Ins 线性图标) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- ========================================== -->
+  <!-- 🎨 CSS 区域 -->
+  <!-- ========================================== -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-white text-black overflow-hidden h-screen flex flex-col">
+
+  <!-- ========================================== -->
+  <!-- 🧱 HTML 区域 -->
+  <!-- ========================================== -->
+
+  <!-- 新增顶栏：包含 Logo 和 用户状态/语言选择栏 -->
+  <header class="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 z-20 shrink-0">
+    <div class="font-bold text-xl tracking-tight flex items-center">
+      Survey Architect
+    </div>
+    
+    <div class="flex items-center space-x-6"> 
+      <!-- 语言选择按钮 --> 
+      <div class="relative"> 
+        <button id="lang-menu-btn" class="flex items-center space-x-1 text-sm font-medium text-gray-700 hover:text-black transition-colors"> 
+          <i data-lucide="globe" class="w-5 h-5"></i> 
+          <span>Language</span> 
+        </button> 
+        
+        <!-- 语言下拉菜单 (默认隐藏) --> 
+        <div id="lang-dropdown" class="hidden absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border border-gray-100 z-50 overflow-hidden"> 
+          <div class="hover:bg-gray-50 cursor-pointer px-4 py-2 text-sm text-gray-700 font-medium">English</div> 
+          <div class="hover:bg-gray-50 cursor-pointer px-4 py-2 text-sm text-gray-700">中文</div> 
+        </div> 
+      </div> 
+
+      <!-- 用户头像按钮 --> 
+      <div class="relative"> 
+        <button id="user-menu-btn" class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold hover:ring-2 hover:ring-gray-200 transition-all"> 
+          J 
+        </button> 
+
+        <!-- 定制化下拉菜单 (默认隐藏) --> 
+        <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-[340px] bg-[#2b2d31] text-white rounded-3xl shadow-2xl p-4 z-50 border border-gray-700"> 
+          <div class="flex justify-between items-center mb-4 px-2"> 
+            <span class="text-sm text-gray-300">XXXXX@gmail.com</span> 
+            <button id="close-dropdown-btn" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button> 
+          </div> 
+          
+          <div class="flex flex-col items-center mb-4"> 
+            <div class="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-3xl font-medium mb-2 relative"> 
+              J 
+              <div class="absolute bottom-0 right-0 bg-gray-800 rounded-full p-1 border-2 border-[#2b2d31]"> 
+                <i data-lucide="camera" class="w-3 h-3 text-white"></i> 
+              </div> 
+            </div> 
+            <h2 class="text-xl font-medium">Hi, Jiayi!</h2> 
+            <button class="mt-3 px-4 py-1.5 rounded-full border border-gray-500 text-sm text-blue-300 hover:bg-gray-800 transition-colors">Manage Survey Architect Account</button> 
+          </div> 
+          
+          <div class="border-t border-gray-600 my-2 pt-2"> 
+            <div class="flex items-center p-2 hover:bg-gray-800 rounded-xl cursor-pointer transition-colors"> 
+              <div class="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center text-white font-medium mr-3">J</div> 
+              <div class="flex flex-col"> 
+                <span class="text-sm font-medium">Jiayi Li</span> 
+                <span class="text-xs text-gray-400">jiayi.zhenbang@gmail.com</span> 
+              </div> 
+            </div> 
+            <div class="flex items-center p-2 hover:bg-gray-800 rounded-xl cursor-pointer transition-colors"> 
+              <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-medium mr-3">A</div> 
+              <div class="flex flex-col"> 
+                <span class="text-sm font-medium">Alex</span> 
+                <span class="text-xs text-gray-400">workplatformshare@gmail.com</span> 
+              </div> 
+            </div> 
+          </div> 
+
+          <div class="border-t border-gray-600 my-2 pt-2 space-y-1"> 
+            <div class="flex items-center p-3 hover:bg-gray-800 rounded-xl cursor-pointer transition-colors text-sm"> 
+              <i data-lucide="plus" class="w-5 h-5 mr-3 text-gray-300"></i> Add another account 
+            </div> 
+            <div class="flex items-center p-3 hover:bg-gray-800 rounded-xl cursor-pointer transition-colors text-sm"> 
+              <i data-lucide="log-out" class="w-5 h-5 mr-3 text-gray-300"></i> Sign out of all accounts 
+            </div> 
+          </div> 
+          
+          <div class="text-center mt-3 text-xs text-gray-400"> 
+            Privacy Policy • Terms of Service 
+          </div> 
+        </div> 
+      </div> 
+    </div> 
+  </header>
+
+  <!-- 下方主体容器 -->
+  <div class="flex flex-1 overflow-hidden">
+    
+    <!-- 1. 左侧固定导航栏 -->
+    <nav class="w-20 md:w-48 border-r border-gray-200 flex flex-col p-4 space-y-2 transition-all duration-300 shrink-0">
+      <div class="nav-item flex items-center p-3 rounded-lg cursor-pointer"> 
+        <i data-lucide="user" class="mr-0 md:mr-3 w-6 h-6"></i> 
+        <span class="text-base font-medium hidden md:block">Profile</span> 
+      </div> 
+      <div class="nav-item active flex items-center p-3 rounded-lg cursor-pointer"> 
+        <i data-lucide="plus-square" class="mr-0 md:mr-3 w-6 h-6"></i> 
+        <span class="text-base font-medium hidden md:block">New Survey</span> 
+      </div> 
+      <div class="nav-item flex items-center p-3 rounded-lg cursor-pointer"> 
+        <i data-lucide="clock" class="mr-0 md:mr-3 w-6 h-6"></i> 
+        <span class="text-base font-medium hidden md:block">History</span> 
+      </div> 
+    </nav>
+
+    <!-- 2. 主工作区 -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden bg-gray-50 border-l-[6px] border-gray-100">
+      
+      <!-- 左侧：编辑表单面板 -->
+      <section class="w-full md:w-1/2 p-6 md:p-10 overflow-y-auto hide-scrollbar bg-white border-r border-gray-200">
+        <header class="mb-8">
+          <h1 class="text-2xl font-semibold mb-2">Edit Your Survey Post</h1> 
+          <p class="text-sm text-gray-500">Create experiment content by entering a news link and adjusting social variables.</p> 
+        </header>
+
+        <div class="space-y-6">
+          <!-- 链接输入与抓取 (全局变量) -->
+          <div>
+            <label class="block text-xs font-bold uppercase text-gray-400 mb-2">News Link</label> 
+            <div class="flex space-x-2">
+              <input
+                id="input-news-link"
+                type="text"
+                placeholder="Paste BBC, Facebook, or X link..." 
+                class="flex-1 bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+              />
+              <button id="btn-fetch-news" class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors whitespace-nowrap">
+                Fetch Image 
+              </button>
+            </div>
+          </div>
+
+          <!-- === 新增：A/B 测试版本切换标签 === -->
+          <div class="flex space-x-4 border-b border-gray-200 mt-6">
+            <button class="version-tab tab-active pb-2 px-4 text-sm transition-colors font-semibold" data-version="vA">Version A</button>
+            <button class="version-tab tab-inactive pb-2 px-4 text-sm transition-colors font-semibold" data-version="vB">Version B</button>
+          </div>
+
+          <!-- === 新增：平台风格选择 === -->
+          <div class="pt-2">
+            <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Platform Style</label> 
+            <select id="input-platform" class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500">
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="x">X (Twitter)</option>
+              <option value="tiktok">TikTok</option>
+            </select>
+          </div>
+
+          <!-- 内容覆盖 -->
+          <div>
+            <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Edit Post Caption</label> 
+            <textarea
+              id="input-caption"
+              rows="4"
+              class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+            ></textarea> 
+          </div>
+
+          <!-- 数值操纵 (统一改为 Edit) --> 
+          <div class="grid grid-cols-3 gap-4"> <!-- 改为 3 列以容纳 Shares -->
+            <div>
+              <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Edit Likes</label> 
+              <input
+                id="input-likes"
+                type="number"
+                class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Edit Comments</label> 
+              <input
+                id="input-comments"
+                type="number"
+                class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+              />
+            </div>
+            <!-- 新增：Edit Shares 以匹配你的需求 -->
+            <div>
+              <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Edit Shares</label> 
+              <input
+                id="input-shares"
+                type="number"
+                class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+              />
+            </div>
+          </div>
+
+          <!-- 邀请码管理 -->
+          <div class="p-4 bg-blue-50 border border-blue-100 rounded-lg mt-4">
+            <label class="block text-xs font-bold uppercase text-blue-500 mb-2">Participant Access Control</label> 
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs text-blue-400">Generate a unique invite code to ensure anonymity</p> 
+                <div id="invite-code-display" class="mt-2 font-mono text-xl font-bold tracking-widest text-blue-700 hidden">
+                  <!-- 邀请码将显示在这里 -->
+                </div>
+              </div>
+              <button
+                id="btn-generate-code"
+                class="bg-white border border-blue-200 text-blue-600 text-xs font-bold px-4 py-2 rounded-md hover:bg-blue-100 transition-colors"
+              >
+                Generate Invite Code 
+              </button>
+            </div>
+          </div>
+
+          <!-- 发布按钮 -->
+          <button class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-md transition-colors flex items-center justify-center space-x-2">
+            <span>Publish Survey Link</span> 
+            <i data-lucide="send" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </section>
+
+      <!-- 右侧：实时预览面板 -->
+      <section class="flex-1 flex items-center justify-center p-6 bg-gray-50 overflow-y-auto hide-scrollbar relative">
+        <div class="absolute top-4 left-4 flex items-center text-xs font-bold text-gray-500 bg-white/80 px-3 py-1 rounded-full shadow-sm z-10">
+          <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+          Live Preview: <span id="preview-badge-name" class="ml-1 uppercase text-gray-700">Instagram</span>
+        </div>
+
+        <!-- 内容由 JS 渲染 -->
+        <div id="preview-container" class="w-full max-w-md transition-all duration-300">
+          <!-- 内容由 JS 渲染 -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- ⚙️ JavaScript 区域 -->
+  <!-- ========================================== -->
+  <script src="app.js"></script>
+</body>
+</html>
