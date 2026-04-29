@@ -22,6 +22,7 @@ CS14_Temp117-Backend/.runtime_cache/
 CS14_Temp117-Backend/data/
 
 .claude/
+.claude/settings.local.json
 
 prototype2.0/fake_researcher_accounts.json
 prototype2.0/published_posts.json

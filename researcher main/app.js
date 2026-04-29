@@ -270,8 +270,10 @@ btnFetchNews.addEventListener('click', async () => {
   btnFetchNews.classList.add('opacity-75', 'cursor-not-allowed');
 
   try {
+    const API_BASE = window.API_BASE || "";
+
     // 调用 Flask 后端接口
-    const response = await fetch('http://localhost:5001/api/scrape', {
+    const response = await fetch(`${API_BASE}/api/scrape`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -297,7 +299,7 @@ btnFetchNews.addEventListener('click', async () => {
 
   } catch (error) {
     console.error("Failed to fetch news data:", error);
-    alert("Backend service error. Please make sure the Flask server is running on port 5001.");
+    alert("Backend service error. Please make sure the scraping API service is running.");
   } finally {
     // 恢复按钮状态
     btnFetchNews.innerText = originalText;

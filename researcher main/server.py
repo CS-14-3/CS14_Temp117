@@ -1,3 +1,4 @@
+import os
 import re
 import socket
 from urllib.parse import urlparse
@@ -112,6 +113,10 @@ def scrape_news():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-if __name__ == '__main__':
-    # 启动 Flask 服务，默认 5000 端口
-    app.run(port=5001, debug=True)
+if __name__ == "__main__":
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("SCRAPER_PORT", "5001"))
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+
+    app.run(host=host, port=port, debug=debug)
+

@@ -44,8 +44,14 @@ CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 ASSET_PREFIX = "/__prototype2_assets/"
 SESSION_COOKIE = "prototype2_researcher_session"
 SESSION_MAX_AGE = 60 * 60 * 8
-SCRAPER_PORT = 5001
-DEFAULT_CAMERA_PORT = 5050
+SCRAPER_PORT = int(os.environ.get("SCRAPER_PORT", "5001"))
+DEFAULT_CAMERA_PORT = int(os.environ.get("CV_BACKEND_PORT", "5050"))
+INTERNAL_BACKEND_HOST = os.environ.get("INTERNAL_BACKEND_HOST", "127.0.0.1")
+
+SCRAPER_INTERNAL_URL = os.environ.get(
+    "SCRAPER_INTERNAL_URL",
+    f"http://{INTERNAL_BACKEND_HOST}:{SCRAPER_PORT}"
+)
 
 ASSET_TAG_PATTERNS = (
     re.compile(r'(<script\b[^>]*\bsrc=["\'])([^"\']+)(["\'])', re.IGNORECASE),
@@ -337,6 +343,15 @@ class ResearcherHandler(BasePrototypeHandler):
                 self.send_json({"success": True, "user": session})
                 return
 
+            if parsed.path == "/api/scrape":
+                payload = self.read_json_body()
+                result = forward_json_request(
+                    f"{SCRAPER_INTERNAL_URL}/api/scrape",
+                    payload,
+                )
+                self.send_json(result)
+                return
+
             if parsed.path == "/api/publish":
                 session = self.get_session()
                 if session is None:
@@ -572,20 +587,20 @@ def researcher_register_bridge_script() -> str:
 
 
 def researcher_edit_pre_app_script() -> str:
-    return f"""
+    return """
 <script>
-(function () {{
-  window.lucide = window.lucide || {{ createIcons: function () {{}} }};
+(function () {
+  window.lucide = window.lucide || { createIcons: function () {} };
 
-  const scrapeApi = "http://127.0.0.1:{SCRAPER_PORT}/api/scrape";
   const originalFetch = window.fetch.bind(window);
-  window.fetch = function (resource, options) {{
-    if (resource === "http://localhost:5001/api/scrape") {{
-      return originalFetch(scrapeApi, options);
-    }}
+  window.fetch = function (resource, options) {
+    if (resource === "http://localhost:5001/api/scrape" ||
+        resource === "http://127.0.0.1:5001/api/scrape") {
+      return originalFetch("/api/scrape", options);
+    }
     return originalFetch(resource, options);
-  }};
-}})();
+  };
+})();
 </script>
 """.strip()
 
@@ -1686,6 +1701,32 @@ def participant_bridge_script() -> str:
 """.strip()
 
 
+def forward_json_request(url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            response_body = response.read().decode("utf-8")
+            return json.loads(response_body or "{}")
+    except urllib.error.HTTPError as exc:
+        try:
+            error_body = exc.read().decode("utf-8")
+            return json.loads(error_body or "{}")
+        except Exception:
+            return {"success": False, "error": f"Scraper API returned HTTP {exc.code}."}
+    except Exception as exc:
+        return {"success": False, "error": f"Scraper API is not available: {exc}"}
+
+
 def load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -1929,7 +1970,11 @@ def stop_processes(processes: list[subprocess.Popen[str]]) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the isolated Prototype 2.0 researcher/participant bridge.")
-    parser.add_argument("--host", default="127.0.0.1", help="Host for the two user-facing bridge servers.")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("HOST", "0.0.0.0"),
+        help="Host for the two user-facing bridge servers.",
+)
     parser.add_argument("--researcher-port", type=int, default=8120, help="Researcher URL port.")
     parser.add_argument("--participant-port", type=int, default=8121, help="Participant URL port.")
     parser.add_argument("--camera-port", type=int, default=DEFAULT_CAMERA_PORT, help="Internal camera backend port.")
@@ -1986,10 +2031,10 @@ def main() -> int:
             [
                 python_for_backend(RESEARCHER_SCRAPER_BACKEND),
                 "-c",
-                "from server import app; app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)",
+                f"from server import app; app.run(host='{INTERNAL_BACKEND_HOST}', port={SCRAPER_PORT}, debug=False, use_reloader=False)",
             ],
             RESEARCHER_SCRAPER_BACKEND.parent,
-            "127.0.0.1",
+            INTERNAL_BACKEND_HOST,
             SCRAPER_PORT,
         )
         if scraper is not None:
@@ -2002,13 +2047,17 @@ def main() -> int:
                 "-c",
                 (
                     "from app import socketio, app; "
-                    f"socketio.run(app, host='127.0.0.1', port={args.camera_port}, allow_unsafe_werkzeug=True)"
+                    f"socketio.run(app, host='{INTERNAL_BACKEND_HOST}', port={args.camera_port}, allow_unsafe_werkzeug=True)"
                 ),
             ],
             CAMERA_BACKEND.parent,
-            "127.0.0.1",
+            INTERNAL_BACKEND_HOST,
             args.camera_port,
-            env={"HOST": "127.0.0.1", "PORT": str(args.camera_port)},
+            env={
+                "HOST": INTERNAL_BACKEND_HOST,
+                "PORT": str(args.camera_port),
+                "CV_BACKEND_PORT": str(args.camera_port),
+            },
         )
         if camera is not None:
             processes.append(camera)
