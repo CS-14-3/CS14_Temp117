@@ -376,7 +376,7 @@ class ResearcherHandler(BasePrototypeHandler):
                     return
 
                 post = self.app_state.store.publish_post(self.read_json_body(), session)
-                participant_url = f"{self.app_state.participant_origin}/?invite={quote(post['inviteCode'])}"
+                participant_url = f"{self.app_state.researcher_origin}/participant?invite={quote(post['inviteCode'])}"
                 self.send_json(
                     {
                         "success": True,
