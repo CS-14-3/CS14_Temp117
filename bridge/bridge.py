@@ -2027,7 +2027,10 @@ def main() -> int:
 
     researcher_origin = public_base_url or display_origin(args.host, args.researcher_port)
     participant_origin = display_origin(args.host, args.participant_port)
-    camera_origin = display_origin(args.host, args.camera_port)
+    camera_origin = os.environ.get(
+        "CAMERA_PUBLIC_ORIGIN",
+        display_origin(args.host, args.camera_port),
+    ).rstrip("/")
 
     occupied_bridge_ports = bridge_ports_in_use(
         args.host,
