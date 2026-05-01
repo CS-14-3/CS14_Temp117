@@ -376,7 +376,8 @@ class ResearcherHandler(BasePrototypeHandler):
                     return
 
                 post = self.app_state.store.publish_post(self.read_json_body(), session)
-                participant_url = f"{self.app_state.researcher_origin}/participant?invite={quote(post['inviteCode'])}"
+                public_base_url = os.environ.get("PUBLIC_BASE_URL", self.app_state.researcher_origin).rstrip("/")
+                participant_url = f"{public_base_url}/participant?invite={quote(post['inviteCode'])}"
                 self.send_json(
                     {
                         "success": True,
@@ -2022,7 +2023,9 @@ def main() -> int:
 
     ensure_required_files()
 
-    researcher_origin = display_origin(args.host, args.researcher_port)
+    public_base_url = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+
+    researcher_origin = public_base_url or display_origin(args.host, args.researcher_port)
     participant_origin = display_origin(args.host, args.participant_port)
     camera_origin = display_origin(args.host, args.camera_port)
 
