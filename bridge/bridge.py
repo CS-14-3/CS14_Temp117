@@ -298,6 +298,10 @@ class ResearcherHandler(BasePrototypeHandler):
         if path in {"/", "/login", "/researcher"}:
             self.serve_login()
             return
+        
+        if path == "/participant":
+            self.serve_participant()
+            return
 
         if path in {"/register", "/signup", "/request-access"}:
             self.serve_register()
@@ -309,6 +313,19 @@ class ResearcherHandler(BasePrototypeHandler):
                 self.redirect("/")
                 return
             self.serve_edit(session)
+            return
+
+        if path == "/api/invite":
+            code = parse_qs(parsed.query).get("code", [""])[0]
+            posts = self.app_state.store.posts_for_invite(code)
+            self.send_json(
+                {
+                    "success": bool(posts),
+                    "inviteCode": normalize_invite_code(code),
+                    "posts": posts,
+                    "error": "" if posts else "No published prototype posts match that invite code.",
+                }
+            )
             return
 
         if path == "/logout":
@@ -435,6 +452,20 @@ class ResearcherHandler(BasePrototypeHandler):
         html_text = inject_before_body_end(
             html_text,
             researcher_edit_bridge_script(session, self.app_state.participant_origin),
+        )
+        self.send_html(html_text)
+
+    def serve_participant(self) -> None:
+        page = self.app_state.participant_page
+        html_text = rewrite_page_assets(page, load_text(page.entry))
+        html_text = inject_before_head_end(html_text, participant_bridge_styles())
+        html_text = inject_before_participant_runtime(
+            html_text,
+            participant_socket_bootstrap_script(self.app_state.camera_origin),
+        )
+        html_text = inject_before_body_end(
+            html_text,
+            participant_bridge_script(),
         )
         self.send_html(html_text)
 
