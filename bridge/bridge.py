@@ -34,6 +34,7 @@ RESEARCHER_EDIT_HTML = ROOT_DIR / "researcher main" / "index.html"
 RESEARCHER_SCRAPER_BACKEND = ROOT_DIR / "researcher main" / "server.py"
 PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
+SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -44,6 +45,16 @@ CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 ASSET_PREFIX = "/__prototype2_assets/"
 SESSION_COOKIE = "prototype2_researcher_session"
 SESSION_MAX_AGE = 60 * 60 * 8
+RESEARCHER_EDIT_PATHS = {
+    "/edit",
+    "/dashboard",
+    "/index.html",
+    "/researcher-main",
+    "/researcher-main/",
+    "/researcher-main/index.html",
+    "/researcher%20main/index.html",
+    "/researcher main/index.html",
+}
 SCRAPER_PORT = int(os.environ.get("SCRAPER_PORT", "5001"))
 DEFAULT_CAMERA_PORT = int(os.environ.get("CV_BACKEND_PORT", "5050"))
 INTERNAL_BACKEND_HOST = os.environ.get("INTERNAL_BACKEND_HOST", "127.0.0.1")
@@ -328,12 +339,16 @@ class ResearcherHandler(BasePrototypeHandler):
             self.serve_register()
             return
 
-        if path in {"/edit", "/dashboard"}:
+        if path in RESEARCHER_EDIT_PATHS:
             session = self.get_session()
             if session is None:
                 self.redirect("/")
                 return
             self.serve_edit(session)
+            return
+
+        if path == "/api/server-info":
+            self.send_json({"success": True, "startedAt": SERVER_STARTED_AT})
             return
 
         if path.startswith("/api/posts/"):
