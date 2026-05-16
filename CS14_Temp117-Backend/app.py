@@ -45,7 +45,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MODEL_PATH = os.path.join(BASE_DIR, "face_landmarker.task")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("CV_BACKEND_PORT", "5050")))
-CAMERA_BUILD_VERSION = "camera-detection-diagnostics-2026-05-16"
+CAMERA_BUILD_VERSION = "camera-render-system-libs-2026-05-16"
 
 if not os.path.exists(MODEL_PATH):
     print(f"[INFO] Downloading model {MODEL_PATH} ...")
