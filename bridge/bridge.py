@@ -413,7 +413,7 @@ class ResearcherHandler(BasePrototypeHandler):
                     return
 
                 post = self.app_state.store.publish_post(self.read_json_body(), session)
-                public_base_url = os.environ.get("PUBLIC_BASE_URL", self.app_state.researcher_origin).rstrip("/")
+                public_base_url = self.request_public_origin()
                 participant_url = f"{public_base_url}/participant?invite={quote(post['inviteCode'])}"
                 self.send_json(
                     {
@@ -434,6 +434,15 @@ class ResearcherHandler(BasePrototypeHandler):
             return
 
         self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+
+    def request_public_origin(self) -> str:
+        forwarded_host = (self.headers.get("X-Forwarded-Host") or "").split(",", 1)[0].strip()
+        host = forwarded_host or self.headers.get("Host") or ""
+        if host:
+            forwarded_proto = (self.headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip()
+            proto = forwarded_proto or ("https" if host.endswith(".onrender.com") else "http")
+            return f"{proto}://{host}".rstrip("/")
+        return os.environ.get("PUBLIC_BASE_URL", self.app_state.researcher_origin).rstrip("/")
 
     def get_session(self) -> dict[str, str] | None:
         raw_cookie = self.headers.get("Cookie")
