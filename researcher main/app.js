@@ -38,13 +38,20 @@ const UI_TEXT = {
   'post.viewAllComments': 'View all {{count}} comments',
   'post.comments': 'comments',
   'question.block': 'Question Block',
+  'question.enable': 'Enable',
+  'question.type': 'Question Type',
   'question.singleChoice': 'Single Choice',
+  'question.multipleChoice': 'Multiple Choice',
   'question.text': 'Question Text',
   'question.textPlaceholder': 'Enter question text',
   'question.options': 'Options',
   'question.addOption': 'Add option',
   'question.required': 'Required answer',
   'question.requiredShort': 'Required',
+  'translation.languages': 'Content Languages',
+  'translation.generate': 'Generate Translations',
+  'translation.source': 'Source Language',
+  'translation.targets': 'Target Languages',
   'invite.accessControl': 'Participant Access Control',
   'invite.description': 'Generate a unique invite code to ensure anonymity',
   'invite.generate': 'Generate Invite Code',
@@ -525,7 +532,7 @@ btnGenerateCode.addEventListener('click', () => {
 // ==============================================================
 
 const createDefaultQuestionBlock = () => ({
-  enabled: true,
+  enabled: false,
   type: 'single',
   questionText: 'How credible is this post?',
   required: true,
@@ -685,6 +692,15 @@ function normalizeVersionSnapshot(snapshot, fallbackPlatform = 'instagram') {
 function normalizeQuestionBlock(questionBlock) {
   const defaults = createDefaultQuestionBlock();
   const source = questionBlock && typeof questionBlock === 'object' ? questionBlock : {};
+  const hasEnabledFlag = Object.prototype.hasOwnProperty.call(source, 'enabled');
+  const hasQuestionContent = typeof source.questionText === 'string' && source.questionText.trim();
+  const hasOptionContent = Array.isArray(source.options)
+    && source.options.some((option) => {
+      if (option && typeof option === 'object') {
+        return String(option.label || '').trim();
+      }
+      return String(option || '').trim();
+    });
   const options = Array.isArray(source.options)
     ? source.options
         .map((option, index) => ({
@@ -697,8 +713,8 @@ function normalizeQuestionBlock(questionBlock) {
   return {
     ...defaults,
     ...source,
-    enabled: true,
-    type: 'single',
+    enabled: hasEnabledFlag ? Boolean(source.enabled) : Boolean(hasQuestionContent && hasOptionContent),
+    type: source.type === 'multiple' ? 'multiple' : 'single',
     questionText: typeof source.questionText === 'string' && source.questionText.trim()
       ? source.questionText
       : defaults.questionText,
@@ -2798,7 +2814,9 @@ const btnFetchNews = document.getElementById('btn-fetch-news');
 const inputPlatform = document.getElementById('input-platform');
 const previewContainer = document.getElementById('preview-container');
 const previewBadgeName = document.getElementById('preview-platform-name');
+const inputQuestionEnabled = document.getElementById('input-question-enabled');
 const questionBlockControls = document.getElementById('question-block-controls');
+const inputQuestionType = document.getElementById('input-question-type');
 const inputQuestionText = document.getElementById('input-question-text');
 const questionOptionsList = document.getElementById('question-options-list');
 const btnAddQuestionOption = document.getElementById('btn-add-question-option');
@@ -2850,6 +2868,7 @@ function isNoSurveyEditorTarget(target) {
     '.version-tab',
     '#input-platform',
     '#question-block-editor',
+    '#translation-editor',
     '#btn-generate-code',
     '#btn-publish-survey',
     '#preview-container',
@@ -2934,9 +2953,12 @@ const withRemoval = (content, key, data, extraClasses = '', aspectClass = '') =>
 
 function renderQuestionBlock(data, theme = 'light') {
   const questionBlock = normalizeQuestionBlock(data.questionBlock);
+  if (!questionBlock.enabled) {
+    return '';
+  }
 
   const isDark = theme === 'dark';
-  const choiceType = 'radio';
+  const choiceType = questionBlock.type === 'multiple' ? 'checkbox' : 'radio';
   const wrapperClass = isDark
     ? 'mt-3 rounded-xl bg-black/55 border border-white/20 p-3 backdrop-blur-sm text-white'
     : 'mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-900';
@@ -3541,7 +3563,7 @@ function renderQuestionOptionEditor(option, index, totalOptions) {
 
 function renderQuestionBlockEditor() {
   const questionBlock = getCurrentQuestionBlock();
-  if (!questionBlock || !questionBlockControls) {
+  if (!questionBlock || !inputQuestionEnabled || !questionBlockControls) {
     return;
   }
   const currentData = getCurrentVersionData();
@@ -3552,9 +3574,12 @@ function renderQuestionBlockEditor() {
     currentData?.platform || 'instagram'
   );
 
-  questionBlock.enabled = true;
-  questionBlock.type = 'single';
-  questionBlockControls.classList.remove('hidden');
+  inputQuestionEnabled.checked = questionBlock.enabled;
+  questionBlockControls.classList.toggle('hidden', !questionBlock.enabled);
+
+  if (inputQuestionType) {
+    inputQuestionType.value = questionBlock.type;
+  }
 
   if (inputQuestionText && document.activeElement !== inputQuestionText) {
     inputQuestionText.value = displayQuestionBlock.questionText;
@@ -3680,16 +3705,20 @@ function updateEditorSurveyAvailability() {
     inputNewsLink,
     btnFetchNews,
     inputPlatform,
+    inputQuestionEnabled,
+    inputQuestionType,
     inputQuestionText,
     btnAddQuestionOption,
     inputQuestionRequired,
+    inputSourceLocale,
+    btnGenerateTranslations,
     btnGenerateCode,
     document.getElementById('btn-publish-survey')
   ].forEach((element) => setDisabledState(element, !hasSurvey));
 
   tabs.forEach((tab) => setDisabledState(tab, !hasSurvey));
 
-  document.querySelectorAll('#news-tabs-container button, #question-options-list input, #question-options-list button').forEach((element) => {
+  document.querySelectorAll('#news-tabs-container button, #question-options-list input, #question-options-list button, [data-target-locale]').forEach((element) => {
     setDisabledState(element, !hasSurvey);
   });
 }
@@ -3743,16 +3772,18 @@ function collectSurveyTranslationEntries(survey) {
         }
 
         const questionBlock = normalizeQuestionBlock(variant.questionBlock);
-        entries.push({
-          key: `news.${newsIndex}.${versionKey}.${platform}.question.text`,
-          text: questionBlock.questionText
-        });
-        questionBlock.options.forEach((option, optionIndex) => {
+        if (questionBlock.enabled) {
           entries.push({
-            key: `news.${newsIndex}.${versionKey}.${platform}.question.option.${optionIndex}`,
-            text: option.label
+            key: `news.${newsIndex}.${versionKey}.${platform}.question.text`,
+            text: questionBlock.questionText
           });
-        });
+          questionBlock.options.forEach((option, optionIndex) => {
+            entries.push({
+              key: `news.${newsIndex}.${versionKey}.${platform}.question.option.${optionIndex}`,
+              text: option.label
+            });
+          });
+        }
       });
     });
   });
@@ -4003,6 +4034,22 @@ inputPlatform.addEventListener('change', (e) => {
   renderPreview();
   saveAppStateToLocalStorage();
 });
+
+if (inputQuestionEnabled) {
+  inputQuestionEnabled.addEventListener('change', (e) => {
+    updateQuestionBlock((questionBlock) => {
+      questionBlock.enabled = e.target.checked;
+    }, true);
+  });
+}
+
+if (inputQuestionType) {
+  inputQuestionType.addEventListener('change', (e) => {
+    updateQuestionBlock((questionBlock) => {
+      questionBlock.type = e.target.value === 'multiple' ? 'multiple' : 'single';
+    });
+  });
+}
 
 if (inputQuestionText) {
   inputQuestionText.addEventListener('input', (e) => {

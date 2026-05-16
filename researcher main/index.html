@@ -158,9 +158,19 @@
           <div id="question-block-editor" class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
             <div class="flex items-center justify-between gap-4">
               <label class="block text-xs font-bold uppercase text-gray-500" data-i18n="question.block">Question Block</label>
-              <span class="text-xs font-bold text-gray-500" data-i18n="question.singleChoice">Single Choice</span>
+              <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                <input id="input-question-enabled" type="checkbox" class="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                <span data-i18n="question.enable">Enable</span>
+              </label>
             </div>
-            <div id="question-block-controls" class="mt-4 space-y-4">
+            <div id="question-block-controls" class="hidden mt-4 space-y-4">
+              <div>
+                <label class="block text-xs font-bold uppercase text-gray-400 mb-2" data-i18n="question.type">Question Type</label>
+                <select id="input-question-type" class="w-full bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500">
+                  <option value="single" data-i18n="question.singleChoice">Single Choice</option>
+                  <option value="multiple" data-i18n="question.multipleChoice">Multiple Choice</option>
+                </select>
+              </div>
               <div>
                 <label class="block text-xs font-bold uppercase text-gray-400 mb-2" data-i18n="question.text">Question Text</label>
                 <textarea
@@ -183,6 +193,44 @@
                 <span data-i18n="question.required">Required answer</span>
               </label>
             </div>
+          </div>
+
+          <div id="translation-editor" class="p-4 bg-white border border-gray-200 rounded-lg">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <label class="block text-xs font-bold uppercase text-gray-500" data-i18n="translation.languages">Content Languages</label>
+              <button id="btn-generate-translations" type="button" class="bg-gray-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-md transition-colors" data-i18n="translation.generate">
+                Generate Translations
+              </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div>
+                <label class="block text-xs font-bold uppercase text-gray-400 mb-2" data-i18n="translation.source">Source Language</label>
+                <select id="input-source-locale" class="w-full bg-gray-50 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-500">
+                  <option value="en">English</option>
+                  <option value="zh">Chinese</option>
+                  <option value="ar">Arabic</option>
+                  <option value="es">Spanish</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase text-gray-400 mb-2" data-i18n="translation.targets">Target Languages</label>
+                <div class="flex flex-wrap gap-3 min-h-10 items-center bg-gray-50 border border-gray-300 rounded-md px-3 py-2">
+                  <label class="inline-flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="checkbox" value="zh" data-target-locale class="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                    <span>Chinese</span>
+                  </label>
+                  <label class="inline-flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="checkbox" value="ar" data-target-locale class="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                    <span>Arabic</span>
+                  </label>
+                  <label class="inline-flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer">
+                    <input type="checkbox" value="es" data-target-locale class="w-4 h-4 rounded border-gray-300 text-sky-500 focus:ring-sky-500" />
+                    <span>Spanish</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div id="translation-status-list" class="mt-4 space-y-2"></div>
           </div>
 
           <!-- 邀请码管理 -->

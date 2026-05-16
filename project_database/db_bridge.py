@@ -217,6 +217,12 @@ class DBBridge:
 
                 version_key = str(news_payload.get("publishedVersionKey") or published_version_key).strip() or published_version_key
                 variant_payload = self._extract_published_variant(news_payload, version_key)
+                question_block = self._normalize_question_block(variant_payload.get("questionBlock"))
+                hidden_elements = dict(self._normalize_hidden_elements(variant_payload.get("hiddenElements")) or {})
+                if question_block.get("type") == "multiple":
+                    hidden_elements = {**hidden_elements, "_questionBlockType": "multiple"}
+                else:
+                    hidden_elements.pop("_questionBlockType", None)
                 variant = SurveyVariant(
                     news_item_id=news_item.id,
                     version_key=version_key,
@@ -226,16 +232,15 @@ class DBBridge:
                     avatar_url=self._empty_to_none(variant_payload.get("avatar")),
                     username=self._empty_to_none(variant_payload.get("username")),
                     handle=self._empty_to_none(variant_payload.get("handle")),
-                    hidden_elements_json=self._normalize_hidden_elements(variant_payload.get("hiddenElements")),
-                    question_text=self._extract_question_text(variant_payload.get("questionBlock")),
-                    question_required=self._extract_question_required(variant_payload.get("questionBlock")),
+                    hidden_elements_json=hidden_elements or None,
+                    question_text=self._empty_to_none(question_block.get("questionText")),
+                    question_required=bool(question_block.get("required")),
                     created_at=published_at,
                     updated_at=published_at,
                 )
                 db.add(variant)
                 db.flush()
 
-                question_block = self._normalize_question_block(variant_payload.get("questionBlock"))
                 for option_index, option in enumerate(question_block.get("options", []), start=1):
                     option_obj = SurveyQuestionOption(
                         variant_id=variant.id,
@@ -505,12 +510,15 @@ class DBBridge:
     ) -> dict[str, Any]:
         del db
         hidden = variant.hidden_elements_json or {}
+        hidden_for_client = {key: value for key, value in hidden.items() if key != "_questionBlockType"}
         username = variant.username or DEFAULT_USERNAME
         handle = variant.handle or DEFAULT_HANDLE
         options = [
             {"id": option.id, "label": option.option_label}
             for option in sorted(variant.question_options, key=lambda item: item.sort_order)
         ]
+        question_enabled = bool((variant.question_text or "").strip() and options)
+        question_type = "multiple" if hidden.get("_questionBlockType") == "multiple" else "single"
         return {
             "id": f"{invite_code}_{index}",
             "inviteCode": invite_code,
@@ -529,8 +537,10 @@ class DBBridge:
             "handle": handle,
             "location": "",
             "time": DEFAULT_TIME_LABEL,
-            "hiddenElements": hidden,
+            "hiddenElements": hidden_for_client,
             "questionBlock": {
+                "enabled": question_enabled,
+                "type": question_type,
                 "questionText": variant.question_text or "",
                 "required": bool(variant.question_required),
                 "options": options,
@@ -573,7 +583,7 @@ class DBBridge:
 
     def _normalize_question_block(self, value: Any) -> dict[str, Any]:
         if not isinstance(value, dict):
-            return {"questionText": "", "required": False, "options": []}
+            return {"enabled": False, "type": "single", "questionText": "", "required": False, "options": []}
         options = value.get("options") if isinstance(value.get("options"), list) else []
         normalized_options = []
         for index, option in enumerate(options[:4], start=1):
@@ -582,8 +592,15 @@ class DBBridge:
             else:
                 label = str(option or f"Option {index}").strip() or f"Option {index}"
             normalized_options.append({"label": label})
+        question_text = str(value.get("questionText") or "").strip()
+        enabled = bool(value.get("enabled")) if "enabled" in value else bool(question_text and normalized_options)
+        if not enabled:
+            normalized_options = []
+            question_text = ""
         return {
-            "questionText": str(value.get("questionText") or "").strip(),
+            "enabled": enabled,
+            "type": "multiple" if value.get("type") == "multiple" else "single",
+            "questionText": question_text,
             "required": bool(value.get("required")),
             "options": normalized_options,
         }
