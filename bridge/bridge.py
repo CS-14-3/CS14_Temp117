@@ -348,7 +348,13 @@ class ResearcherHandler(BasePrototypeHandler):
             return
 
         if path == "/api/server-info":
-            self.send_json({"success": True, "startedAt": SERVER_STARTED_AT})
+            self.send_json(
+                {
+                    "success": True,
+                    "start_time": SERVER_STARTED_AT,
+                    "startedAt": SERVER_STARTED_AT,
+                }
+            )
             return
 
         if path.startswith("/api/posts/"):
