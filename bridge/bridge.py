@@ -35,7 +35,7 @@ RESEARCHER_SCRAPER_BACKEND = ROOT_DIR / "researcher main" / "server.py"
 PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "participant-prototype6-postdata-fix-2026-05-16"
+BRIDGE_BUILD_VERSION = "participant-camera-diagnostics-2026-05-16"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"

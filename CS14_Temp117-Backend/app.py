@@ -45,7 +45,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MODEL_PATH = os.path.join(BASE_DIR, "face_landmarker.task")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("CV_BACKEND_PORT", "5050")))
-CAMERA_BUILD_VERSION = "camera-prototype6-merge-2026-05-16"
+CAMERA_BUILD_VERSION = "camera-detection-diagnostics-2026-05-16"
 
 if not os.path.exists(MODEL_PATH):
     print(f"[INFO] Downloading model {MODEL_PATH} ...")
@@ -167,7 +167,7 @@ def handle_frame(data):
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if frame is None:
-            emit("landmarks", {"detected": False})
+            emit("landmarks", {"detected": False, "error": "Camera frame could not be decoded."})
             return
 
         frame, mean_lum = _normalise_lighting(frame)
@@ -194,7 +194,7 @@ def handle_frame(data):
 
     except Exception as e:
         print(f"[ERROR] frame processing: {e}")
-        emit("landmarks", {"detected": False})
+        emit("landmarks", {"detected": False, "error": str(e)})
 
 
 @socketio.on("save_data")

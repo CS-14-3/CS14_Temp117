@@ -697,6 +697,13 @@ var gazeBuf = {xs:[], ys:[], N:5};
    LANDMARKS HANDLER — used by BOTH calibration and study phases
 ══════════════════════════════════════════════════ */
 socket.on('landmarks', function(data){
+  if(data && data.error){
+    document.getElementById('cal-loading-title').textContent='Eye Tracking Backend Error';
+    document.getElementById('cal-loading-msg').textContent=data.error;
+    show('cal-overlay-loading');
+    if(sendingFrames) requestAnimationFrame(captureAndSend);
+    return;
+  }
   if(appPhase === 'STUDY'){
     handleStudyLandmarks(data);
     return;
@@ -775,7 +782,26 @@ function startCalCamera(){
   document.getElementById('cal-loading-msg').textContent='Please click Allow in the browser prompt.';
   navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480},facingMode:'user'},audio:false})
   .then(function(stream){
-    calVideo.srcObject=stream; return calVideo.play();
+    calVideo.srcObject=stream;
+    document.getElementById('cal-pip').style.display='block';
+    return calVideo.play();
+  }).then(function(){
+    if(calVideo.readyState >= 2 && calVideo.videoWidth){
+      return;
+    }
+    return new Promise(function(resolve){
+      var done=false;
+      function finish(){
+        if(done) return;
+        done=true;
+        calVideo.removeEventListener('loadedmetadata', finish);
+        calVideo.removeEventListener('canplay', finish);
+        resolve();
+      }
+      calVideo.addEventListener('loadedmetadata', finish);
+      calVideo.addEventListener('canplay', finish);
+      setTimeout(finish, 1500);
+    });
   }).then(function(){
     calCanvas.width=calVideo.videoWidth||640; calCanvas.height=calVideo.videoHeight||480;
     calSendCv.width=320; calSendCv.height=240;
@@ -793,6 +819,10 @@ function startCalCamera(){
 
 function captureAndSend(){
   if(!sendingFrames) return;
+  if(!calVideo.videoWidth || calVideo.readyState < 2){
+    requestAnimationFrame(captureAndSend);
+    return;
+  }
   var now=Date.now();
   if(now-lastFrameTime<CFG.FRAME_INTERVAL){requestAnimationFrame(captureAndSend);return;}
   lastFrameTime=now;
