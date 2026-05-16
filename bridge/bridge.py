@@ -35,7 +35,7 @@ RESEARCHER_SCRAPER_BACKEND = ROOT_DIR / "researcher main" / "server.py"
 PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "participant-prototype6-eye-tracking-2026-05-16"
+BRIDGE_BUILD_VERSION = "participant-invite-absolute-api-fix-2026-05-16"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -518,7 +518,7 @@ class ResearcherHandler(BasePrototypeHandler):
         if participant_page_has_legacy_calibration(html_text):
             html_text = inject_before_body_end(
                 html_text,
-                participant_bridge_script(),
+                participant_bridge_script(self.request_public_origin()),
             )
         self.send_html(html_text)
 
@@ -570,7 +570,7 @@ class ParticipantHandler(BasePrototypeHandler):
         if participant_page_has_legacy_calibration(html_text):
             html_text = inject_before_body_end(
                 html_text,
-                participant_bridge_script(),
+                participant_bridge_script(self.request_public_origin()),
             )
         self.send_html(html_text)
 
@@ -1388,10 +1388,12 @@ def participant_socket_bootstrap_script(camera_origin: str) -> str:
 """.strip()
 
 
-def participant_bridge_script() -> str:
+def participant_bridge_script(api_origin: str) -> str:
+    api_origin_json = json_for_script(api_origin.rstrip("/"))
     return """
 <script>
 (function () {
+  const apiOrigin = __PARTICIPANT_API_ORIGIN__;
   const hasCalibrationFlow = document.getElementById("calScreen") && document.getElementById("cal-id-badge");
   if (!hasCalibrationFlow) {
     return;
@@ -1715,7 +1717,7 @@ def participant_bridge_script() -> str:
       return;
     }
     try {
-      const response = await fetch("/api/invite?code=" + encodeURIComponent(code));
+      const response = await fetch(apiOrigin + "/api/invite?code=" + encodeURIComponent(code));
       const result = await response.json();
       if (!result.success || !result.posts.length) {
         alert(result.error || "Invite code not found.");
@@ -1730,7 +1732,7 @@ def participant_bridge_script() -> str:
       show("calScreen");
       appPhase = "CAL_WELCOME";
     } catch (error) {
-      alert("Participant prototype service is not available.");
+      alert("Participant prototype service is not available: " + (error && error.message ? error.message : error));
     }
   }
 
@@ -1745,7 +1747,7 @@ def participant_bridge_script() -> str:
   }
 })();
 </script>
-""".strip()
+""".replace("__PARTICIPANT_API_ORIGIN__", api_origin_json).strip()
 
 
 def forward_json_request(url: str, payload: dict[str, Any]) -> dict[str, Any]:
