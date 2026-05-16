@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Gaze Heatmap Viewer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fafafa;color:#262626;min-height:100vh}
+.shell{display:grid;grid-template-columns:240px 1fr;height:100vh;overflow:hidden}
+
+/* ── sidebar ── */
+.sidebar{background:#fff;border-right:1px solid #dbdbdb;padding:16px 14px;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.logo{display:flex;align-items:center;gap:10px;padding:2px 0 6px}
+.logo-icon{width:34px;height:34px;border-radius:10px;background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;box-shadow:0 2px 8px rgba(220,39,67,.25)}
+.logo-text{font-size:13px;font-weight:700;color:#262626;line-height:1.3}
+.logo-text small{display:block;font-size:10px;font-weight:400;color:#8e8e8e}
+
+.upload-area{border:1.5px dashed #dbdbdb;border-radius:12px;padding:18px 12px;text-align:center;cursor:pointer;transition:.2s;display:block;background:#fafafa}
+.upload-area:hover{border-color:#e1306c;background:#fff8f8}
+.upload-area input{display:none}
+.upload-area p{font-size:11px;color:#8e8e8e;margin-top:3px}
+
+.section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#c7c7cf}
+
+.stat-card{background:#fafafa;border:1px solid #efefef;border-radius:10px;padding:10px 12px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:4px 0;color:#8e8e8e;border-bottom:1px solid #f5f5f5}
+.stat-row:last-child{border-bottom:none}
+.stat-row strong{color:#262626;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700}
+
+.platform-bar{display:flex;flex-direction:column;gap:7px}
+.pb-row{display:flex;align-items:center;gap:7px;font-size:11px}
+.pb-label{width:64px;color:#8e8e8e;flex-shrink:0;text-transform:capitalize}
+.pb-track{flex:1;height:4px;background:#efefef;border-radius:2px;overflow:hidden}
+.pb-fill{height:100%;border-radius:2px;transition:width .4s}
+.pb-val{width:34px;text-align:right;color:#262626;font-size:10px;font-weight:700}
+
+select{width:100%;padding:8px 10px;border-radius:8px;background:#fafafa;border:1px solid #dbdbdb;color:#262626;font-size:12px;font-family:inherit;outline:none;appearance:none;cursor:pointer}
+select:focus{border-color:#0095f6;box-shadow:0 0 0 2px rgba(0,149,246,.12)}
+
+/* ── main area ── */
+.main{display:flex;flex-direction:column;overflow:hidden;background:#fafafa}
+
+/* ── tabs ── */
+.tab-bar{display:flex;border-bottom:1px solid #dbdbdb;background:#fff;flex-shrink:0;padding:0 4px}
+.tab-btn{padding:14px 16px;font-size:12px;font-weight:600;color:#8e8e8e;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:.15s;margin-bottom:-1px;letter-spacing:.2px}
+.tab-btn.active{color:#262626;border-bottom-color:#262626}
+.tab-btn:hover:not(.active){color:#262626}
+
+/* ── region view ── */
+#region-view{flex:1;overflow-y:auto;padding:20px;display:none;background:#fafafa}
+#region-view.active{display:block}
+.empty-state{text-align:center;color:#c7c7cf;padding:60px 20px}
+.empty-state .icon{font-size:44px;margin-bottom:12px}
+.empty-state p{font-size:14px;color:#8e8e8e}
+
+.posts-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.post-card{background:#fff;border-radius:8px;overflow:hidden;border:1px solid #dbdbdb}
+.card-header{padding:9px 12px;display:flex;align-items:center;gap:8px;background:#fff;border-bottom:1px solid #efefef}
+.plat-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+.plat-instagram{background:#fce4ec;color:#d6194d;border:1px solid #f48fb1}
+.plat-x{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9}
+.plat-facebook{background:#e8eaf6;color:#283593;border:1px solid #9fa8da}
+.plat-tiktok{background:#fce4ec;color:#b71c1c;border:1px solid #ef9a9a}
+.card-user{font-size:11px;color:#8e8e8e;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-total{font-size:11px;font-weight:700;color:#262626}
+.region-row{display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid #f5f5f5;transition:background .2s;min-height:34px}
+.region-row:last-child{border-bottom:none}
+.region-label{font-size:11px;font-weight:600;color:#262626;opacity:.9}
+.region-time{font-size:10px;font-weight:700;opacity:.85}
+.region-zero{background:#fafafa}
+.region-zero .region-label{color:#dbdbdb}
+.region-zero .region-time{display:none}
+.heat-legend{display:flex;align-items:center;gap:8px;font-size:10px;color:#8e8e8e;margin-bottom:14px}
+.legend-bar{flex:1;height:5px;border-radius:3px;background:linear-gradient(to right,#efefef,#fde68a,#f97316,#dc2626)}
+
+/* ── position view ── */
+#position-view{flex:1;overflow:hidden;position:relative;background:#111827;display:none;align-items:center;justify-content:center}
+#position-view.active{display:flex}
+#hmCanvas{border-radius:4px;max-width:100%;max-height:100%}
+
+/* ── replay view ── */
+#replay-view{flex:1;overflow:hidden;display:none;flex-direction:column}
+#replay-view.active{display:flex}
+.replay-canvas-area{flex:1;position:relative;background:#fafafa;overflow:hidden}
+#replayCanvas{position:absolute;inset:0;width:100%;height:100%}
+.replay-info-bar{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,0.95);border:1px solid #dbdbdb;border-radius:20px;
+  padding:6px 18px;font-size:12px;pointer-events:none;z-index:10;
+  box-shadow:0 2px 12px rgba(0,0,0,0.10);white-space:nowrap;
+}
+.replay-controls{padding:10px 20px;background:#fff;border-top:1px solid #dbdbdb;display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+.r-segs{height:3px;border-radius:2px;overflow:hidden;display:flex;gap:1px;margin-bottom:2px}
+.r-seg{height:100%;border-radius:1px}
+.replay-seek-row{display:flex;align-items:center;gap:10px}
+.r-time{font-family:'JetBrains Mono',monospace;font-size:11px;color:#8e8e8e;min-width:38px}
+#replaySeek{flex:1;-webkit-appearance:none;height:2px;background:#dbdbdb;border-radius:1px;outline:none;cursor:pointer}
+#replaySeek::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#262626;cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.replay-btn-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.r-play-btn{width:36px;height:36px;border-radius:50%;background:#262626;color:#fff;border:none;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
+.r-play-btn:hover{background:#000;transform:scale(1.05)}
+.r-speed-group{display:flex;gap:3px}
+.r-speed-btn{background:#fafafa;border:1px solid #dbdbdb;color:#8e8e8e;padding:5px 9px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;transition:.15s;font-family:inherit}
+.r-speed-btn.r-on,.r-speed-btn:hover{color:#262626;border-color:#262626;background:#fff}
+.r-mode-toggle{display:flex;gap:2px;background:#fafafa;border:1px solid #dbdbdb;border-radius:8px;padding:3px}
+.r-mode-btn{padding:4px 11px;border-radius:5px;border:none;background:transparent;color:#8e8e8e;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;font-family:inherit}
+.r-mode-btn.r-on{background:#262626;color:#fff}
+.r-gaze-pos{font-size:10px;color:#c7c7cf;margin-left:auto;font-family:'JetBrains Mono',monospace}
+
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">👁</div>
+      <div class="logo-text">Gaze Analyzer<small>CS14 Eye-Tracking Study</small></div>
+    </div>
+
+    <div>
+      <div class="section-label" style="margin-bottom:8px">Load Data</div>
+      <label class="upload-area" id="dropZone">
+        <input type="file" id="fileInput" accept=".json"/>
+        <div style="font-size:28px;margin-bottom:4px">📂</div>
+        <div style="font-size:12px;font-weight:600;color:#262626">Load study JSON</div>
+        <p>Click or drag &amp; drop</p>
+      </label>
+    </div>
+
+    <div id="filterSection" style="display:none">
+      <div class="section-label" style="margin-bottom:6px">Filter</div>
+      <select id="platformFilter">
+        <option value="all">All platforms</option>
+        <option value="instagram">Instagram</option>
+        <option value="x">X (Twitter)</option>
+        <option value="facebook">Facebook</option>
+        <option value="tiktok">TikTok</option>
+      </select>
+    </div>
+
+    <div id="statsSection" style="display:none">
+      <div class="section-label" style="margin-bottom:6px">Session Stats</div>
+      <div class="stat-card" id="statCard"></div>
+    </div>
+
+    <div id="platformSection" style="display:none">
+      <div class="section-label" style="margin-bottom:6px">Gaze by Platform</div>
+      <div class="platform-bar" id="platformBar"></div>
+    </div>
+
+    <div id="regionSection" style="display:none">
+      <div class="section-label" style="margin-bottom:6px">Gaze by Region</div>
+      <div class="platform-bar" id="regionBar"></div>
+    </div>
+
+    <!-- replay-only: current frame info -->
+    <div id="replayInfoSection" style="display:none">
+      <div class="section-label" style="margin-bottom:6px">Current Frame</div>
+      <div class="stat-card" id="replayFrameCard"></div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main">
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-region" onclick="switchTab('region')">📊 Per-Post Analysis</button>
+      <button class="tab-btn" id="tab-position" onclick="switchTab('position')">🗺 Position Map</button>
+      <button class="tab-btn" id="tab-replay" onclick="switchTab('replay')">▶ Gaze Replay</button>
+    </div>
+
+    <!-- per-post region view -->
+    <div id="region-view" class="active">
+      <div class="empty-state" id="region-empty">
+        <div class="icon">📊</div>
+        <p>Load a study JSON to see per-post gaze analysis</p>
+      </div>
+      <div id="posts-grid" class="posts-grid" style="display:none">
+        <div class="heat-legend" id="heat-legend" style="grid-column:1/-1">
+          <span>No gaze</span><div class="legend-bar"></div><span>Max attention</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- position heatmap view -->
+    <div id="position-view">
+      <div id="pos-empty" class="empty-state" style="color:#8e8e8e">
+        <div class="icon">👁️</div>
+        <p>Load a study JSON to view the position heatmap</p>
+      </div>
+      <canvas id="hmCanvas" style="display:none"></canvas>
+    </div>
+
+    <!-- gaze replay view -->
+    <div id="replay-view">
+      <div class="replay-canvas-area" id="replayCanvasArea">
+        <canvas id="replayCanvas"></canvas>
+        <div class="replay-info-bar" id="replayInfoBar" style="display:none">
+          <div id="rPlatDot" style="width:8px;height:8px;border-radius:50%;flex-shrink:0"></div>
+          <span id="rPlatName" style="font-weight:700"></span>
+          <span id="rUsername" style="color:#6b7280;font-size:11px"></span>
+          <span id="rScrollY" style="color:#4b5563;font-size:10px;font-family:'JetBrains Mono',monospace"></span>
+          <span id="rRegion" style="color:#6366f1;font-size:10px"></span>
+        </div>
+        <div id="replayEmpty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8e8e8e;text-align:center">
+          <div><div style="font-size:48px;margin-bottom:12px">▶</div><p>Load a JSON file to replay the gaze session</p></div>
+        </div>
+      </div>
+      <div class="replay-controls" id="replayControls" style="display:none">
+        <div class="r-segs" id="rSegs"></div>
+        <div class="replay-seek-row">
+          <span class="r-time" id="rTimeLeft">0.0s</span>
+          <input type="range" id="replaySeek" min="0" max="100000" value="0" step="66"/>
+          <span class="r-time" id="rTimeRight">—</span>
+        </div>
+        <div class="replay-btn-row">
+          <button class="r-play-btn" id="replayPlayBtn">▶</button>
+          <div class="r-speed-group">
+            <button class="r-speed-btn" data-rspeed="0.5">0.5×</button>
+            <button class="r-speed-btn r-on" data-rspeed="1">1×</button>
+            <button class="r-speed-btn" data-rspeed="2">2×</button>
+            <button class="r-speed-btn" data-rspeed="4">4×</button>
+          </div>
+          <div class="r-mode-toggle">
+            <button class="r-mode-btn r-on" data-rmode="replay">▶ 回放</button>
+            <button class="r-mode-btn" data-rmode="heatmap">🌡 热力图</button>
+            <button class="r-mode-btn" data-rmode="scanpath">→ 扫视路径</button>
+          </div>
+          <span class="r-gaze-pos" id="rGazePos">gaze: —</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+var studyData=null;
+var currentTab='region';
+
+var PLATFORM_COLORS={instagram:'#e1306c',x:'#1da1f2',facebook:'#1877f2',tiktok:'#ff0050'};
+var PLATFORM_NAMES={instagram:'Instagram',x:'X (Twitter)',facebook:'Facebook',tiktok:'TikTok'};
+var REGION_LABELS={feed_image:'Image',feed_caption:'Caption',feed_engagement:'Engagement',feed_likes:'Likes',feed_header:'Header'};
+
+var LAYOUTS={
+  instagram:[
+    {id:'feed_header',label:'Header',h:38},{id:'feed_image',label:'Image',h:110},
+    {id:'feed_engagement',label:'Engagement',h:34},{id:'feed_likes',label:'Likes',h:28},
+    {id:'feed_caption',label:'Caption',h:44}
+  ],
+  x:[
+    {id:'feed_header',label:'Header',h:38},{id:'feed_image',label:'Image',h:80},
+    {id:'feed_caption',label:'Caption',h:44},{id:'feed_engagement',label:'Engagement',h:34}
+  ],
+  facebook:[
+    {id:'feed_header',label:'Header',h:38},{id:'feed_image',label:'Image',h:90},
+    {id:'feed_likes',label:'Reactions',h:28},{id:'feed_engagement',label:'Engagement',h:34},
+    {id:'feed_caption',label:'Caption',h:44}
+  ],
+  tiktok:[
+    {id:'feed_header',label:'Header',h:38},{id:'feed_image',label:'Video',h:130},
+    {id:'feed_caption',label:'Caption',h:38},{id:'feed_engagement',label:'Engagement',h:34}
+  ]
+};
+
+/* ── file loading ── */
+document.getElementById('fileInput').addEventListener('change',function(e){
+  var f=e.target.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(ev){loadData(JSON.parse(ev.target.result));};
+  r.readAsText(f);
+});
+var dz=document.getElementById('dropZone');
+dz.addEventListener('dragover',function(e){e.preventDefault();this.style.borderColor='#6366f1';});
+dz.addEventListener('dragleave',function(){this.style.borderColor='';});
+dz.addEventListener('drop',function(e){
+  e.preventDefault();this.style.borderColor='';
+  var f=e.dataTransfer.files[0];if(!f)return;
+  var r=new FileReader();
+  r.onload=function(ev){loadData(JSON.parse(ev.target.result));};
+  r.readAsText(f);
+});
+
+function loadData(d){
+  studyData=d;
+  replayFrames=buildReplayFrames(d);
+  replayDuration=replayFrames.length?replayFrames[replayFrames.length-1].ms:0;
+  rCurrentMs=0;
+  ['filterSection','statsSection','platformSection','regionSection'].forEach(function(id){
+    document.getElementById(id).style.display='block';
+  });
+  renderAll();
+  if(currentTab==='replay') initReplayView();
+}
+
+document.getElementById('platformFilter').addEventListener('change',renderAll);
+
+function renderAll(){
+  renderStats();
+  renderRegionView();
+  if(currentTab==='position') renderPositionMap();
+}
+
+/* ── tab switching ── */
+function switchTab(tab){
+  currentTab=tab;
+  ['region','position','replay'].forEach(function(t){
+    document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+    document.getElementById(t+'-view').classList.toggle('active',t===tab);
+  });
+  document.getElementById('replayInfoSection').style.display=tab==='replay'?'block':'none';
+  if(tab==='position'&&studyData) renderPositionMap();
+  if(tab==='replay'&&studyData) initReplayView();
+}
+
+/* ── stats sidebar ── */
+function renderStats(){
+  var logs=studyData.gazeLogs||[];
+  var pf=document.getElementById('platformFilter').value;
+  var filtered=logs.filter(function(l){
+    return l.faceDetected&&l.screenX!=null&&(pf==='all'||l.platform===pf);
+  });
+  var totalSec=(logs.length*0.066).toFixed(0);
+  var trackedPct=logs.length?Math.round(filtered.length/logs.length*100):0;
+  document.getElementById('statCard').innerHTML=
+    sr('Participant',studyData.participantId||'—')+
+    sr('Duration',totalSec+'s')+
+    sr('Face tracked',trackedPct+'%')+
+    sr('Gaze samples',filtered.length)+
+    sr('Posts shown',(studyData.posts||[]).length);
+  var platCounts={};
+  filtered.forEach(function(l){if(l.platform)platCounts[l.platform]=(platCounts[l.platform]||0)+1;});
+  var maxP=Math.max.apply(null,Object.values(platCounts).concat([1]));
+  document.getElementById('platformBar').innerHTML=Object.keys(platCounts).sort().map(function(p){
+    var sec=(platCounts[p]*0.066).toFixed(1);
+    return pbRow(p,Math.round(platCounts[p]/maxP*100),sec+'s',PLATFORM_COLORS[p]||'#6366f1');
+  }).join('');
+  var regCounts={};
+  filtered.forEach(function(l){if(l.gazedRegion)regCounts[l.gazedRegion]=(regCounts[l.gazedRegion]||0)+1;});
+  var maxR=Math.max.apply(null,Object.values(regCounts).concat([1]));
+  document.getElementById('regionBar').innerHTML=Object.keys(REGION_LABELS).map(function(r){
+    var c=regCounts[r]||0;
+    return pbRow(REGION_LABELS[r],Math.round(c/maxR*100),(c*0.066).toFixed(1)+'s','#6366f1');
+  }).join('');
+}
+function sr(l,v){return '<div class="stat-row"><span>'+l+'</span><strong>'+v+'</strong></div>';}
+function pbRow(label,pct,val,color){
+  return '<div class="pb-row"><span class="pb-label">'+label+'</span>'+
+    '<div class="pb-track"><div class="pb-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'+
+    '<span class="pb-val">'+val+'</span></div>';
+}
+
+/* ── heat color ── */
+function heatColor(frac){
+  if(frac<=0) return null;
+  var stops=[[0.01,[254,243,199]],[0.30,[251,191,36]],[0.60,[234,88,12]],[1.00,[185,28,28]]];
+  for(var i=1;i<stops.length;i++){
+    if(frac<=stops[i][0]){
+      var t=(frac-stops[i-1][0])/(stops[i][0]-stops[i-1][0]);
+      var c0=stops[i-1][1],c1=stops[i][1];
+      return 'rgb('+Math.round(c0[0]+(c1[0]-c0[0])*t)+','+Math.round(c0[1]+(c1[1]-c0[1])*t)+','+Math.round(c0[2]+(c1[2]-c0[2])*t)+')';
+    }
+  }
+  return 'rgb(185,28,28)';
+}
+function textOnHeat(frac){return frac>0.4?'#fff':'#262626';}
+function formatTime(frames){var s=frames*0.066;return s>=1?s.toFixed(1)+'s':(frames*66)+'ms';}
+
+/* ── per-post region view ── */
+function renderRegionView(){
+  var grid=document.getElementById('posts-grid');
+  var emptyEl=document.getElementById('region-empty');
+  if(!studyData){emptyEl.style.display='block';grid.style.display='none';return;}
+  var pf=document.getElementById('platformFilter').value;
+  var logs=(studyData.gazeLogs||[]).filter(function(l){
+    return l.faceDetected&&l.screenX!=null&&(pf==='all'||l.platform===pf);
+  });
+  var posts=studyData.posts||[];
+  var postMap={};
+  posts.forEach(function(p){
+    if(pf!=='all'&&p.platform!==pf) return;
+    postMap[p.index]={platform:p.platform,username:p.username,regions:{}};
+  });
+  logs.forEach(function(l){
+    if(postMap[l.postId]&&l.gazedRegion)
+      postMap[l.postId].regions[l.gazedRegion]=(postMap[l.postId].regions[l.gazedRegion]||0)+1;
+  });
+  var maxCount=1;
+  Object.values(postMap).forEach(function(p){Object.values(p.regions).forEach(function(c){if(c>maxCount)maxCount=c;});});
+  var keys=Object.keys(postMap).sort(function(a,b){return Number(a)-Number(b);});
+  if(!keys.length){emptyEl.style.display='block';grid.style.display='none';return;}
+  emptyEl.style.display='none';grid.style.display='grid';
+  Array.from(grid.children).forEach(function(el){if(!el.id)grid.removeChild(el);});
+  keys.forEach(function(pid){
+    var p=postMap[pid];
+    var layout=LAYOUTS[p.platform]||LAYOUTS.instagram;
+    var totalCount=Object.values(p.regions).reduce(function(s,c){return s+c;},0);
+    var card=document.createElement('div');card.className='post-card';
+    var platClass='plat-'+(p.platform||'instagram');
+    var platName=PLATFORM_NAMES[p.platform]||p.platform||'?';
+    var totalStr=totalCount>0?formatTime(totalCount):'no gaze';
+    var html='<div class="card-header">'+
+      '<span class="plat-badge '+platClass+'">'+platName+'</span>'+
+      '<span class="card-user">@'+(p.username||'?')+'</span>'+
+      '<span class="card-total">'+totalStr+'</span></div>';
+    layout.forEach(function(region){
+      var count=p.regions[region.id]||0;
+      var frac=count/maxCount;
+      var bg=heatColor(frac);
+      var noGaze=!bg;
+      var style='min-height:'+region.h+'px;'+(noGaze?'':'background:'+bg+';');
+      var tc=noGaze?'#3d4263':textOnHeat(frac);
+      html+='<div class="region-row'+(noGaze?' region-zero':'')+'" style="'+style+'color:'+tc+'">'+
+            '<span class="region-label">'+region.label+'</span>'+
+            '<span class="region-time">'+(count>0?formatTime(count):'')+'</span></div>';
+    });
+    card.innerHTML=html;grid.appendChild(card);
+  });
+}
+
+/* ── position heatmap view ── */
+function filteredLogs(){
+  if(!studyData) return[];
+  var pf=document.getElementById('platformFilter').value;
+  return(studyData.gazeLogs||[]).filter(function(l){
+    return l.faceDetected&&l.screenX!=null&&(pf==='all'||l.platform===pf);
+  });
+}
+function renderPositionMap(){
+  var canvas=document.getElementById('hmCanvas');
+  var posEmpty=document.getElementById('pos-empty');
+  var logs=filteredLogs();
+  if(!logs.length){posEmpty.style.display='block';canvas.style.display='none';return;}
+  posEmpty.style.display='none';canvas.style.display='block';
+  var container=document.getElementById('position-view');
+  canvas.width=container.clientWidth||800;canvas.height=container.clientHeight||600;
+  var ctx=canvas.getContext('2d');
+  var W=canvas.width,H=canvas.height;
+  ctx.fillStyle='#0f172a';ctx.fillRect(0,0,W,H);
+  var feedW=Math.min(W*0.7,600);var feedL=(W-feedW)/2;
+  ctx.strokeStyle='rgba(99,102,241,0.12)';ctx.lineWidth=1;
+  ctx.strokeRect(feedL,0,feedW/2-4,H);ctx.strokeRect(feedL+feedW/2+4,0,feedW/2-4,H);
+  ctx.fillStyle='rgba(99,102,241,0.3)';ctx.font='10px system-ui';
+  ctx.fillText('Post column 1',feedL+8,14);ctx.fillText('Post column 2',feedL+feedW/2+12,14);
+  var r=Math.round(Math.min(W,H)*0.045);
+  logs.forEach(function(l){
+    var x=l.screenX/100*W,y=l.screenY/100*H;
+    var col=PLATFORM_COLORS[l.platform]||'#f97316';
+    var rgb=hexToRgb(col);
+    var g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,'rgba('+rgb+',0.3)');g.addColorStop(0.5,'rgba('+rgb+',0.10)');g.addColorStop(1,'rgba('+rgb+',0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+  });
+  var trail=logs.slice(-150);
+  ctx.strokeStyle='rgba(165,180,252,0.18)';ctx.lineWidth=1;ctx.beginPath();
+  trail.forEach(function(l,i){var x=l.screenX/100*W,y=l.screenY/100*H;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  ctx.stroke();
+  var platsSeen=[...new Set(logs.map(function(l){return l.platform;}).filter(Boolean))];
+  var lx=12,ly=H-12;
+  platsSeen.forEach(function(p){
+    ctx.fillStyle=PLATFORM_COLORS[p]||'#6366f1';
+    ctx.beginPath();ctx.arc(lx+4,ly-4,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.font='10px system-ui';
+    ctx.fillText(PLATFORM_NAMES[p]||p,lx+12,ly);lx+=70;
+  });
+  ctx.fillStyle='rgba(255,255,255,0.35)';ctx.font='10px system-ui';
+  ctx.fillText(logs.length+' samples',W-80,H-8);
+}
+function hexToRgb(hex){return parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16);}
+
+/* ══════════════════════════════════════════
+   GAZE REPLAY ENGINE
+══════════════════════════════════════════ */
+var replayFrames=[];
+var replayDuration=0;
+var rCurrentMs=0;
+var rPlaying=false;
+var rSpeed=1;
+var rLastTs=null;
+var rMode='replay';
+var TRAIL_LEN=30;
+
+var rCanvas=document.getElementById('replayCanvas');
+var rCtx=rCanvas.getContext('2d');
+var rHmCanvas=document.createElement('canvas');
+var rHmCtx=rHmCanvas.getContext('2d');
+var rHmDirty=true; /* rebuild heatmap when seek position changes */
+
+var RP_COLORS={instagram:'#e1306c',x:'#1d9bf0',facebook:'#1877f2',tiktok:'#ff0050'};
+var RP_BG={instagram:'#fce4ec',x:'#e8f5fd',facebook:'#e7f0fd',tiktok:'#ffe0e8'};
+
+/* ── feed layout constants (matching participant.html) ── */
+var FEED_MAX_W=1120, FEED_GAP=28, FEED_PAD_X=18;
+var FEED_OFFSET_Y=165; /* topbar(48) + story-bar(116) + feed padding(8) - approx */
+var VP_H_EST=860;      /* estimated viewport height during study (adjustable) */
+
+function rpColor(p){return RP_COLORS[p]||'#6366f1';}
+
+/* card height as function of column width, matching participant.html aspect ratios */
+function rCardH(platform,colW){
+  var header=58,footer=118;
+  if(platform==='instagram') return header+colW+footer;           /* square image */
+  if(platform==='tiktok')    return header+Math.max(580,Math.round(colW*16/9))+footer-40;
+  return header+Math.round(colW*9/16)+footer;                     /* X / Facebook 16:9 */
+}
+
+/* build doc-coordinate layout for all posts */
+function rBuildFeedLayout(){
+  if(!studyData||!studyData.posts) return null;
+  var W=rCanvas.width;
+  var feedW=Math.min(W-FEED_PAD_X*2,FEED_MAX_W);
+  var colW=Math.floor((feedW-FEED_GAP)/2);
+  var feedL=Math.round((W-feedW)/2);
+  var posts=(studyData.posts||[]).slice().sort(function(a,b){return a.index-b.index;});
+  var items=[];
+  var docY=FEED_OFFSET_Y;
+  for(var i=0;i<posts.length;i+=2){
+    var p0=posts[i],p1=posts[i+1];
+    var h0=rCardH(p0.platform,colW);
+    var h1=p1?rCardH(p1.platform,colW):0;
+    items.push({post:p0,docX:feedL,docY:docY,w:colW,h:h0});
+    if(p1) items.push({post:p1,docX:feedL+colW+FEED_GAP,docY:docY,w:colW,h:h1});
+    docY+=Math.max(h0,h1)+FEED_GAP;
+  }
+  return{items:items,feedW:feedW,feedL:feedL,colW:colW};
+}
+
+/* convert document y → canvas y at current scrollY */
+function rDocY(docY,scrollY){return(docY-scrollY)/VP_H_EST*rCanvas.height;}
+
+/* draw one mock post card */
+function rMockCard(post,docX,docY,w,h,scrollY){
+  var x=docX;
+  var y=rDocY(docY,scrollY);
+  var cH=rDocY(docY+h,scrollY)-y; /* scaled card height on canvas */
+  if(y+cH<-20||y>rCanvas.height+20) return; /* off-screen */
+  var col=rpColor(post.platform);
+  var bg=RP_BG[post.platform]||'#f3f4f6';
+  var HEADER=rDocY(docY+58,scrollY)-y;
+
+  /* card shadow */
+  rCtx.shadowColor='rgba(0,0,0,0.10)';rCtx.shadowBlur=8;rCtx.shadowOffsetY=2;
+  rCtx.fillStyle='#ffffff';
+  rRoundRect(x,y,w,cH,10);rCtx.fill();
+  rCtx.shadowBlur=0;rCtx.shadowOffsetY=0;
+
+  /* card border */
+  rCtx.strokeStyle='#dbdbdb';rCtx.lineWidth=1;
+  rRoundRect(x,y,w,cH,10);rCtx.stroke();
+
+  /* clip everything inside card */
+  rCtx.save();rRoundRect(x,y,w,cH,10);rCtx.clip();
+
+  /* header */
+  rCtx.fillStyle='#ffffff';rCtx.fillRect(x,y,w,HEADER);
+  rCtx.strokeStyle='#efefef';rCtx.lineWidth=1;
+  rCtx.beginPath();rCtx.moveTo(x,y+HEADER);rCtx.lineTo(x+w,y+HEADER);rCtx.stroke();
+
+  /* platform accent bar on left */
+  rCtx.fillStyle=col;rCtx.fillRect(x,y,3,HEADER);
+
+  /* avatar */
+  var av=HEADER*0.48,avX=x+14+av,avY=y+HEADER/2;
+  rCtx.beginPath();rCtx.arc(avX,avY,av,0,Math.PI*2);
+  rCtx.fillStyle=bg;rCtx.fill();
+  rCtx.strokeStyle=col;rCtx.lineWidth=1.5;rCtx.stroke();
+
+  /* username */
+  var fs=Math.max(10,Math.min(13,HEADER*0.3));
+  rCtx.fillStyle='#262626';rCtx.font='600 '+fs+'px -apple-system,sans-serif';
+  rCtx.fillText('@'+(post.username||'?').slice(0,20),avX+av+8,avY+fs*0.38);
+
+  /* platform badge top-right */
+  rCtx.fillStyle=col;rCtx.font='bold '+Math.max(8,fs-2)+'px sans-serif';
+  rCtx.textAlign='right';
+  rCtx.fillText(post.platform.toUpperCase(),x+w-10,y+HEADER/2+fs*0.38);
+  rCtx.textAlign='left';
+
+  /* image area */
+  var imgY=y+HEADER;
+  var imgH=cH-HEADER-rDocY(docY+h,scrollY)+rDocY(docY+h-118,scrollY); /* footer gap */
+  if(post.platform==='tiktok') imgH=cH-HEADER-rDocY(docY+h,scrollY)+rDocY(docY+h-78,scrollY);
+
+  /* gradient image placeholder */
+  var grad=rCtx.createLinearGradient(x,imgY,x,imgY+imgH);
+  grad.addColorStop(0,bg);grad.addColorStop(1,col+'18');
+  rCtx.fillStyle=grad;rCtx.fillRect(x,imgY,w,imgH);
+
+  /* platform icon watermark */
+  var icons={instagram:'📷',x:'𝕏',facebook:'f',tiktok:'♪'};
+  var iconSize=Math.max(22,Math.min(40,imgH*0.18));
+  rCtx.fillStyle=col+'30';
+  rCtx.font=iconSize+'px sans-serif';rCtx.textAlign='center';
+  rCtx.fillText(icons[post.platform]||'',x+w/2,imgY+imgH/2+iconSize*0.35);
+  rCtx.textAlign='left';
+
+  /* footer area */
+  var footY=imgY+Math.max(imgH,0);
+  rCtx.fillStyle='#ffffff';rCtx.fillRect(x,footY,w,cH-(footY-y));
+  rCtx.strokeStyle='#efefef';rCtx.lineWidth=1;
+  rCtx.beginPath();rCtx.moveTo(x,footY);rCtx.lineTo(x+w,footY);rCtx.stroke();
+
+  /* action icon dots */
+  var dotY=footY+(cH-(footY-y))*0.38;
+  [14,28,42].forEach(function(ox){
+    rCtx.beginPath();rCtx.arc(x+ox,dotY,4.5,0,Math.PI*2);
+    rCtx.fillStyle='#e5e7eb';rCtx.fill();
+  });
+
+  rCtx.restore();
+}
+
+function rRoundRect(x,y,w,h,r){
+  rCtx.beginPath();rCtx.moveTo(x+r,y);rCtx.lineTo(x+w-r,y);
+  rCtx.quadraticCurveTo(x+w,y,x+w,y+r);rCtx.lineTo(x+w,y+h-r);
+  rCtx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);rCtx.lineTo(x+r,y+h);
+  rCtx.quadraticCurveTo(x,y+h,x,y+h-r);rCtx.lineTo(x,y+r);
+  rCtx.quadraticCurveTo(x,y,x+r,y);rCtx.closePath();
+}
+
+/* draw the full feed background at current scrollY */
+function rDrawFeedBg(scrollY){
+  var W=rCanvas.width,H=rCanvas.height;
+  /* page bg */
+  rCtx.fillStyle='#fafafa';rCtx.fillRect(0,0,W,H);
+
+  /* mock topbar */
+  rCtx.fillStyle='#ffffff';rCtx.fillRect(0,0,W,rDocY(48,0));
+  rCtx.strokeStyle='#dbdbdb';rCtx.lineWidth=1;
+  rCtx.beginPath();rCtx.moveTo(0,rDocY(48,0));rCtx.lineTo(W,rDocY(48,0));rCtx.stroke();
+
+  /* mock story bar */
+  var sbTop=rDocY(48,scrollY),sbH=rDocY(164,scrollY)-sbTop;
+  if(sbH>0&&sbTop<H){
+    rCtx.fillStyle='#ffffff';rCtx.fillRect(0,sbTop,W,sbH);
+    /* story circles */
+    var sBg=['#e1306c','#1d9bf0','#1877f2','#ff0050','#10b981','#f59e0b'];
+    for(var si=0;si<6;si++){
+      var scX=W*0.12+si*(W*0.13),scY=sbTop+sbH/2,scR=Math.min(sbH*0.32,20);
+      rCtx.beginPath();rCtx.arc(scX,scY,scR,0,Math.PI*2);
+      rCtx.fillStyle=sBg[si%sBg.length]+'22';rCtx.fill();
+      rCtx.strokeStyle=sBg[si%sBg.length];rCtx.lineWidth=1.5;rCtx.stroke();
+    }
+  }
+
+  /* post cards */
+  var layout=rBuildFeedLayout();
+  if(layout) layout.items.forEach(function(it){
+    rMockCard(it.post,it.docX,it.docY,it.w,it.h,scrollY);
+  });
+}
+
+/* Transform studyData.gazeLogs → replay frame array */
+function buildReplayFrames(d){
+  var logs=(d.gazeLogs||[]).filter(function(l){return l.t!=null;});
+  if(!logs.length) return[];
+  logs=logs.slice().sort(function(a,b){return a.t-b.t;});
+  var t0=logs[0].t;
+  return logs.map(function(l){
+    return{ms:l.t-t0,postId:l.postId!=null?l.postId:0,platform:l.platform||'',
+           sx:l.screenX,sy:l.screenY,scrollY:l.scrollY||0,
+           face:l.faceDetected,region:l.gazedRegion||''};
+  });
+}
+
+function rGetFrame(ms){
+  if(!replayFrames.length) return null;
+  var lo=0,hi=replayFrames.length-1;
+  while(lo<hi){var mid=(lo+hi+1)>>1;if(replayFrames[mid].ms<=ms)lo=mid;else hi=mid-1;}
+  return replayFrames[lo];
+}
+
+function rSizeCanvas(){
+  var area=document.getElementById('replayCanvasArea');
+  rCanvas.width=area.clientWidth;rCanvas.height=area.clientHeight;
+  rHmCanvas.width=rCanvas.width;rHmCanvas.height=rCanvas.height;
+  rHmDirty=true;
+}
+
+function rGazeXY(sx,sy){return{x:sx/100*rCanvas.width,y:sy/100*rCanvas.height};}
+
+function rBuildHeatmap(upToMs){
+  rHmCtx.clearRect(0,0,rHmCanvas.width,rHmCanvas.height);
+  replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;}).forEach(function(g){
+    var p=rGazeXY(g.sx,g.sy);var r=42;
+    var grad=rHmCtx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+    grad.addColorStop(0,'rgba(220,50,0,0.38)');
+    grad.addColorStop(0.45,'rgba(240,120,0,0.16)');
+    grad.addColorStop(1,'rgba(255,200,0,0)');
+    rHmCtx.fillStyle=grad;rHmCtx.beginPath();rHmCtx.arc(p.x,p.y,r,0,Math.PI*2);rHmCtx.fill();
+  });
+  rHmDirty=false;
+}
+
+function rDrawTrail(upToMs){
+  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;}).slice(-TRAIL_LEN);
+  if(pts.length<2) return;
+  for(var i=1;i<pts.length;i++){
+    var a=rGazeXY(pts[i-1].sx,pts[i-1].sy);
+    var b=rGazeXY(pts[i].sx,pts[i].sy);
+    var alpha=i/pts.length;
+    var col=rpColor(pts[i].platform);
+    rCtx.beginPath();rCtx.moveTo(a.x,a.y);rCtx.lineTo(b.x,b.y);
+    rCtx.strokeStyle=col+Math.round(alpha*210).toString(16).padStart(2,'0');
+    rCtx.lineWidth=1.6+alpha*2;rCtx.lineCap='round';rCtx.stroke();
+  }
+}
+
+function rDrawDot(g){
+  if(!g||g.sx==null) return;
+  var p=rGazeXY(g.sx,g.sy);var col=rpColor(g.platform);
+  /* outer ring */
+  rCtx.beginPath();rCtx.arc(p.x,p.y,20,0,Math.PI*2);
+  rCtx.fillStyle=col+'28';rCtx.fill();
+  /* white outline so dot stays visible on light bg */
+  rCtx.beginPath();rCtx.arc(p.x,p.y,9,0,Math.PI*2);
+  rCtx.strokeStyle='rgba(255,255,255,0.9)';rCtx.lineWidth=3;rCtx.stroke();
+  /* colored dot */
+  rCtx.beginPath();rCtx.arc(p.x,p.y,7,0,Math.PI*2);
+  rCtx.fillStyle=col;rCtx.shadowBlur=10;rCtx.shadowColor=col;rCtx.fill();rCtx.shadowBlur=0;
+  if(!g.face){
+    rCtx.beginPath();rCtx.arc(p.x,p.y,12,0,Math.PI*2);
+    rCtx.strokeStyle='#ef4444aa';rCtx.lineWidth=2;rCtx.stroke();
+  }
+}
+
+function rDrawScanpath(upToMs){
+  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;});
+  if(pts.length<2) return;
+  rCtx.beginPath();
+  var f=rGazeXY(pts[0].sx,pts[0].sy);rCtx.moveTo(f.x,f.y);
+  pts.forEach(function(g,i){if(i===0)return;var p=rGazeXY(g.sx,g.sy);rCtx.lineTo(p.x,p.y);});
+  rCtx.strokeStyle='rgba(99,102,241,0.35)';rCtx.lineWidth=1.5;rCtx.stroke();
+  pts.filter(function(_,i){return i%8===0;}).forEach(function(g,i){
+    var p=rGazeXY(g.sx,g.sy);
+    rCtx.beginPath();rCtx.arc(p.x,p.y,7,0,Math.PI*2);
+    rCtx.fillStyle=rpColor(g.platform);rCtx.fill();
+    rCtx.strokeStyle='white';rCtx.lineWidth=1.5;rCtx.stroke();
+    rCtx.fillStyle='#fff';rCtx.font='bold 7px monospace';
+    rCtx.textAlign='center';rCtx.fillText(i+1,p.x,p.y+2.5);rCtx.textAlign='left';
+  });
+}
+
+function rUpdateUI(g){
+  if(!g||!studyData) return;
+  var post=(studyData.posts||[]).find(function(p){return p.index===g.postId;});
+  var col=rpColor(g.platform);
+  document.getElementById('rPlatDot').style.background=col;
+  document.getElementById('rPlatName').textContent=PLATFORM_NAMES[g.platform]||g.platform||'—';
+  document.getElementById('rPlatName').style.color=col;
+  document.getElementById('rUsername').textContent=post?'@'+post.username:'';
+  document.getElementById('rScrollY').textContent='↕'+g.scrollY+'px';
+  document.getElementById('rRegion').textContent=g.region?'· '+g.region:'';
+  /* sidebar frame card */
+  document.getElementById('replayFrameCard').innerHTML=
+    sr('Time',(rCurrentMs/1000).toFixed(2)+'s')+
+    sr('Platform',PLATFORM_NAMES[g.platform]||g.platform||'—')+
+    sr('Account',post?'@'+post.username:'—')+
+    sr('Gaze X',g.sx!=null?g.sx.toFixed(1)+'%':'—')+
+    sr('Gaze Y',g.sy!=null?g.sy.toFixed(1)+'%':'—')+
+    sr('Scroll Y',g.scrollY+'px')+
+    sr('Region',g.region||'—')+
+    sr('Face det.',g.face?'yes':'no');
+  /* bottom bar */
+  document.getElementById('replaySeek').value=rCurrentMs;
+  document.getElementById('rTimeLeft').textContent=(rCurrentMs/1000).toFixed(1)+'s';
+  document.getElementById('rGazePos').textContent=g.sx!=null?
+    'gaze: ('+g.sx.toFixed(0)+'%, '+g.sy.toFixed(0)+'%)':'gaze: —';
+}
+
+function rRender(ms){
+  if(!rCanvas.width||!replayFrames.length) return;
+  var g=rGetFrame(ms);
+  rCtx.clearRect(0,0,rCanvas.width,rCanvas.height);
+  rDrawFeedBg(g?g.scrollY:0);
+  if(rMode==='scanpath'){
+    rDrawScanpath(ms);rDrawDot(g);
+  } else if(rMode==='heatmap'){
+    if(rHmDirty) rBuildHeatmap(ms);
+    rCtx.drawImage(rHmCanvas,0,0);
+    rDrawDot(g);
+  } else {
+    /* replay: heatmap accumulation + live trail + dot */
+    if(rHmDirty) rBuildHeatmap(ms);
+    rCtx.drawImage(rHmCanvas,0,0);
+    rDrawTrail(ms);rDrawDot(g);
+  }
+  rUpdateUI(g);
+}
+
+function rAnimate(timestamp){
+  if(!rPlaying) return;
+  if(rLastTs===null) rLastTs=timestamp;
+  var elapsed=(timestamp-rLastTs)*rSpeed;rLastTs=timestamp;
+  rCurrentMs=Math.min(rCurrentMs+elapsed,replayDuration);
+  rHmDirty=true;
+  rRender(rCurrentMs);
+  if(rCurrentMs>=replayDuration){
+    rPlaying=false;document.getElementById('replayPlayBtn').textContent='▶';rLastTs=null;return;
+  }
+  requestAnimationFrame(rAnimate);
+}
+
+function buildReplayTimeline(){
+  var segs=document.getElementById('rSegs');segs.innerHTML='';
+  if(!replayFrames.length) return;
+  var lastPlat=replayFrames[0].platform,segStart=0,segments=[];
+  for(var i=1;i<replayFrames.length;i++){
+    if(replayFrames[i].platform!==lastPlat||i===replayFrames.length-1){
+      segments.push({platform:lastPlat,from:segStart,to:replayFrames[i].ms});
+      lastPlat=replayFrames[i].platform;segStart=replayFrames[i].ms;
+    }
+  }
+  segments.forEach(function(s){
+    var pct=(s.to-s.from)/replayDuration*100;
+    var el=document.createElement('div');el.className='r-seg';
+    el.style.cssText='flex:0 0 '+pct+'%;background:'+rpColor(s.platform)+';opacity:0.75';
+    segs.appendChild(el);
+  });
+  document.getElementById('replaySeek').max=replayDuration;
+  document.getElementById('rTimeRight').textContent=(replayDuration/1000).toFixed(1)+'s';
+}
+
+function initReplayView(){
+  if(!replayFrames.length) return;
+  document.getElementById('replayEmpty').style.display='none';
+  document.getElementById('replayInfoBar').style.display='flex';
+  document.getElementById('replayControls').style.display='flex';
+  setTimeout(function(){
+    rSizeCanvas();
+    buildReplayTimeline();
+    rCurrentMs=0;rPlaying=false;rHmDirty=true;
+    document.getElementById('replayPlayBtn').textContent='▶';
+    rRender(0);
+  },30);
+}
+
+/* playback controls */
+document.getElementById('replayPlayBtn').addEventListener('click',function(){
+  if(!replayFrames.length) return;
+  rPlaying=!rPlaying;
+  this.textContent=rPlaying?'⏸':'▶';
+  if(rPlaying){
+    if(rCurrentMs>=replayDuration) rCurrentMs=0;
+    rLastTs=null;requestAnimationFrame(rAnimate);
+  }
+});
+
+document.getElementById('replaySeek').addEventListener('input',function(){
+  rCurrentMs=Number(this.value);rHmDirty=true;rRender(rCurrentMs);
+});
+
+document.querySelectorAll('.r-speed-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.r-speed-btn').forEach(function(b){b.classList.remove('r-on');});
+    btn.classList.add('r-on');rSpeed=parseFloat(btn.dataset.rspeed);
+  });
+});
+
+document.querySelectorAll('.r-mode-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.r-mode-btn').forEach(function(b){b.classList.remove('r-on');});
+    btn.classList.add('r-on');rMode=btn.dataset.rmode;rHmDirty=true;rRender(rCurrentMs);
+  });
+});
+
+window.addEventListener('resize',function(){
+  if(currentTab==='position'&&studyData) renderPositionMap();
+  if(currentTab==='replay'){rSizeCanvas();rRender(rCurrentMs);}
+});
+
+/* ── auto-load from URL param (researcher dashboard integration) ── */
+(function(){
+  var params=new URLSearchParams(window.location.search);
+  var autoload=params.get('autoload');
+  if(!autoload) return;
+  var dropZone=document.getElementById('dropZone');
+  if(dropZone){
+    dropZone.innerHTML='<div style="font-size:20px;margin-bottom:4px">⏳</div><div style="font-size:12px;font-weight:600;color:#262626">Loading session...</div>';
+  }
+  fetch('/api/study-data/'+encodeURIComponent(autoload))
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(d){
+      loadData(d);
+      if(dropZone){
+        dropZone.innerHTML='<div style="font-size:20px;margin-bottom:4px">✅</div><div style="font-size:12px;font-weight:600;color:#262626">'+
+          (d.participantId||autoload)+'</div><p>Session loaded from dashboard</p>';
+      }
+    })
+    .catch(function(e){
+      if(dropZone){
+        dropZone.innerHTML='<div style="font-size:20px;margin-bottom:4px">❌</div><div style="font-size:12px;font-weight:600;color:#c00">Load failed</div><p>'+e.message+'</p>';
+      }
+    });
+})();
+
+</script>
+</body>
+</html>

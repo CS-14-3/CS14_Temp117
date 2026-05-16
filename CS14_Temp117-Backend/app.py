@@ -45,7 +45,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MODEL_PATH = os.path.join(BASE_DIR, "face_landmarker.task")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("CV_BACKEND_PORT", "5050")))
-CAMERA_BUILD_VERSION = "camera-startup-fix-2026-05-16"
+CAMERA_BUILD_VERSION = "camera-prototype6-merge-2026-05-16"
 
 if not os.path.exists(MODEL_PATH):
     print(f"[INFO] Downloading model {MODEL_PATH} ...")
@@ -67,6 +67,7 @@ options = vision.FaceLandmarkerOptions(
 )
 detector = None
 detector_error = None
+_clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
 
 
 def get_detector():
@@ -83,6 +84,17 @@ def get_detector():
         detector_error = str(error)
         print(f"[ERROR] MediaPipe FaceLandmarker unavailable: {detector_error}")
         return None
+
+
+def _normalise_lighting(frame: np.ndarray) -> tuple[np.ndarray, float]:
+    """Apply CLAHE on the LAB L-channel and return the original mean luminance."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    mean_lum = float(np.mean(gray))
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    l = _clahe.apply(l)
+    corrected = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+    return corrected, mean_lum
 
 
 # ==================== Routes ====================
@@ -108,16 +120,47 @@ def participant_page():
     return send_from_directory(BASE_DIR, "participant.html")
 
 
+@app.route("/viewer")
+def viewer_page():
+    bridge_dir = os.path.join(os.path.dirname(BASE_DIR), "bridge")
+    return send_from_directory(bridge_dir, "heatmap_viewer.html")
+
+
+@app.route("/api/study-results")
+def list_study_results():
+    data_dir = os.path.join(BASE_DIR, "data")
+    sessions = []
+    if os.path.exists(data_dir):
+        for fname in sorted(os.listdir(data_dir), reverse=True):
+            if fname.startswith("CS14_STUDY_") and fname.endswith(".json"):
+                fpath = os.path.join(data_dir, fname)
+                parts = fname[:-5].split("_")
+                pid = parts[2] if len(parts) > 2 else "unknown"
+                date_str = parts[3] if len(parts) > 3 else ""
+                time_str = parts[4] if len(parts) > 4 else ""
+                sessions.append({
+                    "filename": fname,
+                    "participantId": pid,
+                    "date": date_str,
+                    "time": time_str,
+                    "fileSizeKb": round(os.path.getsize(fpath) / 1024),
+                })
+    return jsonify({"success": True, "sessions": sessions})
+
+
+@app.route("/api/study-results/<filename>")
+def get_study_result(filename):
+    if not filename.endswith(".json") or "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "Invalid filename"}), 400
+    data_dir = os.path.join(BASE_DIR, "data")
+    return send_from_directory(data_dir, filename)
+
+
 # ==================== WebSocket Events ====================
 
 @socketio.on("frame")
 def handle_frame(data):
     try:
-        face_detector = get_detector()
-        if face_detector is None:
-            emit("landmarks", {"detected": False, "error": detector_error or "Face detector is not available."})
-            return
-
         header, encoded = data.split(",", 1)
         img_bytes = base64.b64decode(encoded)
         nparr = np.frombuffer(img_bytes, np.uint8)
@@ -127,6 +170,17 @@ def handle_frame(data):
             emit("landmarks", {"detected": False})
             return
 
+        frame, mean_lum = _normalise_lighting(frame)
+
+        face_detector = get_detector()
+        if face_detector is None:
+            emit("landmarks", {
+                "detected": False,
+                "error": detector_error or "Face detector is not available.",
+                "lum": round(mean_lum),
+            })
+            return
+
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         detection_result = face_detector.detect(mp_image)
@@ -134,9 +188,9 @@ def handle_frame(data):
         if detection_result.face_landmarks:
             lm = detection_result.face_landmarks[0]
             pts = [[round(p.x, 5), round(p.y, 5), round(p.z, 5)] for p in lm]
-            emit("landmarks", {"detected": True, "pts": pts})
+            emit("landmarks", {"detected": True, "pts": pts, "lum": round(mean_lum)})
         else:
-            emit("landmarks", {"detected": False})
+            emit("landmarks", {"detected": False, "lum": round(mean_lum)})
 
     except Exception as e:
         print(f"[ERROR] frame processing: {e}")
