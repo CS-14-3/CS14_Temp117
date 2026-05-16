@@ -578,10 +578,10 @@ async function verifyInvite() {
       show('mainPage');
       renderFeed();
     } else {
-      alert('Invalid invitation code or no posts found.');
+      alert(json.error || 'Invalid invitation code or no posts found.');
     }
   } catch (e) {
-    alert('Error connecting to server.');
+    alert('Error connecting to server: ' + e.message);
   }
 }
 

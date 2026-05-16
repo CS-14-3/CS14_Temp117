@@ -46,7 +46,6 @@ MODEL_PATH = os.path.join(BASE_DIR, "face_landmarker.task")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("CV_BACKEND_PORT", "5050")))
 
-socketio.run(app, host=HOST, port=PORT, allow_unsafe_werkzeug=True)
 if not os.path.exists(MODEL_PATH):
     print(f"[INFO] Downloading model {MODEL_PATH} ...")
     url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"

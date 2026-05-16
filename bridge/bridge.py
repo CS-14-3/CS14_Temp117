@@ -267,6 +267,47 @@ class BasePrototypeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_invite_posts(self, code: str) -> None:
+        try:
+            posts = self.app_state.store.posts_for_invite(code)
+        except Exception as exc:
+            self.send_json(
+                {
+                    "success": False,
+                    "posts": [],
+                    "inviteCode": normalize_invite_code(code),
+                    "error": f"Invite lookup failed: {exc}",
+                },
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+
+        self.send_json({"success": True, "posts": posts})
+
+    def send_invite_lookup(self, code: str) -> None:
+        try:
+            posts = self.app_state.store.posts_for_invite(code)
+        except Exception as exc:
+            self.send_json(
+                {
+                    "success": False,
+                    "inviteCode": normalize_invite_code(code),
+                    "posts": [],
+                    "error": f"Invite lookup failed: {exc}",
+                },
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+            return
+
+        self.send_json(
+            {
+                "success": bool(posts),
+                "inviteCode": normalize_invite_code(code),
+                "posts": posts,
+                "error": "" if posts else "No published prototype posts match that invite code.",
+            }
+        )
+
 
 class ResearcherHandler(BasePrototypeHandler):
     def do_GET(self) -> None:
@@ -305,21 +346,12 @@ class ResearcherHandler(BasePrototypeHandler):
 
         if path.startswith("/api/posts/"):
             code = path[len("/api/posts/"):]
-            posts = self.app_state.store.posts_for_invite(code)
-            self.send_json({"success": True, "posts": posts})
+            self.send_invite_posts(code)
             return
 
         if path == "/api/invite":
             code = parse_qs(parsed.query).get("code", [""])[0]
-            posts = self.app_state.store.posts_for_invite(code)
-            self.send_json(
-                {
-                    "success": bool(posts),
-                    "inviteCode": normalize_invite_code(code),
-                    "posts": posts,
-                    "error": "" if posts else "No published prototype posts match that invite code.",
-                }
-            )
+            self.send_invite_lookup(code)
             return
 
         if path == "/logout":
@@ -492,21 +524,12 @@ class ParticipantHandler(BasePrototypeHandler):
 
         if path.startswith("/api/posts/"):
             code = path[len("/api/posts/"):]
-            posts = self.app_state.store.posts_for_invite(code)
-            self.send_json({"success": True, "posts": posts})
+            self.send_invite_posts(code)
             return
 
         if path == "/api/invite":
             code = parse_qs(parsed.query).get("code", [""])[0]
-            posts = self.app_state.store.posts_for_invite(code)
-            self.send_json(
-                {
-                    "success": bool(posts),
-                    "inviteCode": normalize_invite_code(code),
-                    "posts": posts,
-                    "error": "" if posts else "No published prototype posts match that invite code.",
-                }
-            )
+            self.send_invite_lookup(code)
             return
 
         if path.startswith(ASSET_PREFIX):
@@ -1320,6 +1343,11 @@ def participant_bridge_script() -> str:
     return """
 <script>
 (function () {
+  const hasCalibrationFlow = document.getElementById("calScreen") && document.getElementById("cal-id-badge");
+  if (!hasCalibrationFlow) {
+    return;
+  }
+
   const platformOrder = ["instagram", "facebook", "x", "tiktok"];
   const platformNames = { instagram: "Instagram", facebook: "Facebook", x: "X", tiktok: "TikTok" };
   const platformIcons = {
@@ -2047,27 +2075,30 @@ def main() -> int:
         if scraper is not None:
             processes.append(scraper)
 
-        camera = start_internal_process(
-            "camera-backend",
-            [
-                python_for_backend(CAMERA_BACKEND),
-                "-c",
-                (
-                    "from app import socketio, app; "
-                    f"socketio.run(app, host='{INTERNAL_BACKEND_HOST}', port={args.camera_port}, allow_unsafe_werkzeug=True)"
-                ),
-            ],
-            CAMERA_BACKEND.parent,
-            INTERNAL_BACKEND_HOST,
-            args.camera_port,
-            env={
-                "HOST": INTERNAL_BACKEND_HOST,
-                "PORT": str(args.camera_port),
-                "CV_BACKEND_PORT": str(args.camera_port),
-            },
-        )
-        if camera is not None:
-            processes.append(camera)
+        if os.environ.get("CAMERA_PUBLIC_ORIGIN"):
+            print("[internal] CAMERA_PUBLIC_ORIGIN is configured; using the external camera backend.")
+        else:
+            camera = start_internal_process(
+                "camera-backend",
+                [
+                    python_for_backend(CAMERA_BACKEND),
+                    "-c",
+                    (
+                        "from app import socketio, app; "
+                        f"socketio.run(app, host='{INTERNAL_BACKEND_HOST}', port={args.camera_port}, allow_unsafe_werkzeug=True)"
+                    ),
+                ],
+                CAMERA_BACKEND.parent,
+                INTERNAL_BACKEND_HOST,
+                args.camera_port,
+                env={
+                    "HOST": INTERNAL_BACKEND_HOST,
+                    "PORT": str(args.camera_port),
+                    "CV_BACKEND_PORT": str(args.camera_port),
+                },
+            )
+            if camera is not None:
+                processes.append(camera)
 
     researcher_httpd = ThreadingHTTPServer((args.host, args.researcher_port), ResearcherHandler)
     participant_httpd = ThreadingHTTPServer((args.host, args.participant_port), ParticipantHandler)
