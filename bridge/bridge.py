@@ -35,7 +35,7 @@ RESEARCHER_SCRAPER_BACKEND = ROOT_DIR / "researcher main" / "server.py"
 PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "participant-invite-absolute-api-fix-2026-05-16"
+BRIDGE_BUILD_VERSION = "participant-prototype6-postdata-fix-2026-05-16"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -1398,6 +1398,7 @@ def participant_bridge_script(api_origin: str) -> str:
   if (!hasCalibrationFlow) {
     return;
   }
+  const hasNativePrototype6Feed = typeof renderFeed === "function" && Array.isArray(window.postData);
 
   const platformOrder = ["instagram", "facebook", "x", "tiktok"];
   const platformNames = { instagram: "Instagram", facebook: "Facebook", x: "X", tiktok: "TikTok" };
@@ -1407,6 +1408,7 @@ def participant_bridge_script(api_origin: str) -> str:
     x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l7.2 8.5L4.5 20h3.1l5-5.9L17.5 20H20l-7.4-8.8L19 4h-3.1l-4.7 5.6L6.6 4H4z"></path></svg>',
     tiktok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4c.7 1.7 2.1 3 4 3.5V11c-1.5-.1-2.9-.6-4-1.5v5.7a4.7 4.7 0 1 1-4.7-4.7c.3 0 .7 0 1 .1v3.1a2 2 0 1 0 1.7 2V4h2z"></path></svg>'
   };
+  const storiesPerPage = 6;
   let activeInviteCode = "";
   let activePlatform = "instagram";
   let platformPosts = { instagram: [], facebook: [], x: [], tiktok: [] };
@@ -1437,7 +1439,15 @@ def participant_bridge_script(api_origin: str) -> str:
       previewLabel: raw.image ? "" : (raw.previewLabel || "[News Image Preview]"),
       image: raw.image || "",
       platform: normalizePlatform(raw.platform),
+      id: raw.id || String(index + 1),
       avatarLetter: raw.avatarLetter || username.charAt(0).toUpperCase() || "S",
+      avatar: raw.avatar || "",
+      handle: raw.handle || "",
+      hiddenElements: raw.hiddenElements || {},
+      icons: raw.icons || {},
+      likesLabel: raw.likesLabel || "likes",
+      actionButtons: Array.isArray(raw.actionButtons) ? raw.actionButtons : [],
+      questionBlock: raw.questionBlock || null,
       commentsList: Array.isArray(raw.commentsList) && raw.commentsList.length
         ? raw.commentsList
         : ["Published from the researcher prototype.", "Shown only in its matching platform module."],
@@ -1661,14 +1671,34 @@ def participant_bridge_script(api_origin: str) -> str:
   }
 
   function applyPublishedPosts(posts) {
-    platformPosts = { instagram: [], facebook: [], x: [], tiktok: [] };
-    posts.map(normalizePost).forEach(function (post) {
-      platformPosts[post.platform].push(post);
-    });
-    installStyleRail();
-    applyPlatform(firstPlatformWithPosts());
+    const normalizedPosts = posts.map(normalizePost);
+    if (Array.isArray(window.postData)) {
+      window.postData.length = 0;
+      normalizedPosts.forEach(function (post) {
+        window.postData.push(post);
+      });
+    } else {
+      window.postData = normalizedPosts;
+    }
+    if (typeof postData !== "undefined") {
+      postData = window.postData;
+    }
+    if (typeof currentPostId !== "undefined") {
+      currentPostId = 0;
+    }
+    if (typeof studyData !== "undefined" && studyData) {
+      studyData.posts = normalizedPosts.map(function (post, index) {
+        return {
+          index: index,
+          id: post.id || null,
+          platform: post.platform || null,
+          username: post.username || null
+        };
+      });
+    }
   }
 
+  if (!hasNativePrototype6Feed) {
   mkPost = function (id) {
     return renderPlatformCard(id);
   };
@@ -1695,7 +1725,9 @@ def participant_bridge_script(api_origin: str) -> str:
     }
   };
 
-  if (typeof enterStudy === "function") {
+  }
+
+  if (!hasNativePrototype6Feed && typeof enterStudy === "function") {
     const originalEnterStudy = enterStudy;
     enterStudy = function () {
       originalEnterStudy();
