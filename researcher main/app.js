@@ -18,6 +18,8 @@ const UI_TEXT = {
   'nav.profile': 'Profile',
   'nav.newSurvey': 'New Survey',
   'nav.history': 'History',
+  'nav.results': 'Results',
+  'nav.dataExport': 'Data Export',
   'editor.title': 'Edit Your Survey Post',
   'editor.subtitle': 'Create experiment content by entering a news link and adjusting social variables.',
   'editor.createNewSurvey': 'Create New Survey',
@@ -139,6 +141,17 @@ const UI_TEXT = {
   'status.published': 'Published',
   'status.completed': 'Completed',
   'status.unknown': 'Unknown date',
+  'results.title': 'Study Results',
+  'results.subtitle': 'Completed eye-tracking sessions collected from participants.',
+  'results.loading': 'Loading sessions...',
+  'results.emptyTitle': 'No study sessions found',
+  'results.emptySubtitle': 'Sessions appear here after participants complete the study.',
+  'results.loadError': 'Could not connect to study backend',
+  'results.participant': 'Participant {{id}}',
+  'results.sessions': '{{count}} sessions',
+  'results.latest': 'Latest: {{date}} - {{size}}',
+  'results.downloadJson': 'JSON',
+  'results.viewAnalysis': 'View Analysis',
   'language.translatePage': 'Translate page',
   'language.loading': 'Translating...',
   'notification.participantCompleted': 'Participant completed the survey. Gaze data is ready to export.',
@@ -1750,6 +1763,24 @@ function ensureDataExportView() {
   return dataExportView;
 }
 
+function ensureResultsView() {
+  let resultsView = document.getElementById('results-view');
+  if (resultsView) {
+    return resultsView;
+  }
+
+  const mainWorkspace = getMainWorkspace();
+  if (!mainWorkspace) {
+    return null;
+  }
+
+  resultsView = document.createElement('section');
+  resultsView.id = 'results-view';
+  resultsView.className = 'hidden flex-1 overflow-y-auto hide-scrollbar bg-white p-6 md:p-10';
+  mainWorkspace.appendChild(resultsView);
+  return resultsView;
+}
+
 function getResearcherAccount() {
   try {
     const storedAccount = localStorage.getItem('surveyLabResearcherAccount');
@@ -2677,15 +2708,123 @@ function handleProfileClick(e) {
   }
 }
 
+async function renderResultsView() {
+  const resultsView = ensureResultsView();
+  if (!resultsView) return;
+
+  resultsView.innerHTML = `
+    <header class="mb-8">
+      <h1 class="text-2xl font-semibold mb-2">${escapeHtml(t('results.title'))}</h1>
+      <p class="text-sm text-gray-500">${escapeHtml(t('results.subtitle'))}</p>
+    </header>
+    <div id="results-loading" class="text-center py-12 text-gray-400">
+      <div class="text-2xl mb-3">...</div>
+      <p class="text-sm">${escapeHtml(t('results.loading'))}</p>
+    </div>
+    <div id="results-list" class="hidden space-y-3"></div>
+    <div id="results-empty" class="hidden text-center py-16">
+      <p class="text-sm font-semibold text-gray-500">${escapeHtml(t('results.emptyTitle'))}</p>
+      <p class="text-xs text-gray-400 mt-1">${escapeHtml(t('results.emptySubtitle'))}</p>
+    </div>
+  `;
+
+  try {
+    const response = await fetch('/api/study-sessions');
+    const data = await response.json();
+    const loading = document.getElementById('results-loading');
+    if (loading) {
+      loading.classList.add('hidden');
+    }
+
+    const sessions = data && data.success && Array.isArray(data.sessions) ? data.sessions : [];
+    if (sessions.length === 0) {
+      const empty = document.getElementById('results-empty');
+      if (empty) {
+        empty.classList.remove('hidden');
+      }
+      return;
+    }
+
+    const groupedSessions = sessions.reduce((groups, session) => {
+      const participantId = session.participantId || 'unknown';
+      if (!groups[participantId]) {
+        groups[participantId] = [];
+      }
+      groups[participantId].push(session);
+      return groups;
+    }, {});
+
+    const groups = Object.values(groupedSessions).map((participantSessions) => ({
+      participantId: participantSessions[0].participantId || 'unknown',
+      latestSession: participantSessions[0],
+      sessionCount: participantSessions.length,
+      totalSizeKb: participantSessions.reduce((sum, session) => sum + (Number(session.fileSizeKb) || 0), 0)
+    }));
+
+    const list = document.getElementById('results-list');
+    if (!list) return;
+
+    list.classList.remove('hidden');
+    list.innerHTML = groups.map((group) => {
+      const session = group.latestSession;
+      const initials = (group.participantId || '??').slice(0, 2).toUpperCase();
+      const filename = session.filename || '';
+      const latestLabel = session.completedAt
+        ? formatSurveyDate(session.completedAt)
+        : (session.dateLabel || 'Unknown date');
+      const totalSize = group.totalSizeKb > 0
+        ? `${Math.round(group.totalSizeKb).toLocaleString()} KB data`
+        : 'data ready';
+      const viewerUrl = `/viewer?autoload=${encodeURIComponent(filename)}`;
+
+      return `
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-white hover:border-gray-300 transition-all">
+          <div class="flex items-center gap-4 min-w-0">
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+              ${escapeHtml(initials)}
+            </div>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-sm text-gray-900">${escapeHtml(t('results.participant', { id: group.participantId }))}</span>
+                <span class="text-xs font-semibold text-sky-600 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">${escapeHtml(t('results.sessions', { count: group.sessionCount }))}</span>
+              </div>
+              <div class="text-xs text-gray-500">${escapeHtml(t('results.latest', { date: latestLabel, size: totalSize }))}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <a href="/api/study-data/${encodeURIComponent(filename)}" download="${escapeHtml(filename)}"
+               class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-xs font-bold px-3 py-2 rounded-md transition-colors whitespace-nowrap">
+              ${escapeHtml(t('results.downloadJson'))}
+            </a>
+            <a href="${escapeHtml(viewerUrl)}" target="_blank" rel="noopener"
+               class="bg-gray-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-md transition-colors whitespace-nowrap">
+              ${escapeHtml(t('results.viewAnalysis'))} &rarr;
+            </a>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (error) {
+    const loading = document.getElementById('results-loading');
+    if (loading) {
+      loading.innerHTML = `
+        <p class="text-sm font-medium text-red-500">${escapeHtml(t('results.loadError'))}</p>
+        <p class="text-xs text-gray-400 mt-1">${escapeHtml(String(error && error.message ? error.message : error))}</p>
+      `;
+    }
+  }
+}
+
 function showEditorView() {
   const mainWorkspace = getMainWorkspace();
   const profileView = ensureProfileView();
   const historyView = ensureHistoryView();
   const dataExportView = ensureDataExportView();
+  const resultsView = ensureResultsView();
 
   if (mainWorkspace) {
     Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === profileView || child === historyView || child === dataExportView) {
+      if (child === profileView || child === historyView || child === dataExportView || child === resultsView) {
         child.classList.add('hidden');
       } else {
         child.classList.remove('hidden');
@@ -2705,6 +2844,7 @@ function showHistoryView() {
   const profileView = ensureProfileView();
   const historyView = ensureHistoryView();
   const dataExportView = ensureDataExportView();
+  const resultsView = ensureResultsView();
 
   if (mainWorkspace) {
     Array.from(mainWorkspace.children).forEach((child) => {
@@ -2725,6 +2865,7 @@ function showProfileView() {
 
   const mainWorkspace = getMainWorkspace();
   const profileView = ensureProfileView();
+  const resultsView = ensureResultsView();
 
   if (mainWorkspace) {
     Array.from(mainWorkspace.children).forEach((child) => {
@@ -2749,6 +2890,7 @@ function showDataExportView() {
   const mainWorkspace = getMainWorkspace();
   const profileView = ensureProfileView();
   const historyView = ensureHistoryView();
+  const resultsView = ensureResultsView();
 
   if (mainWorkspace) {
     Array.from(mainWorkspace.children).forEach((child) => {
@@ -2768,7 +2910,31 @@ function showDataExportView() {
     profileView.classList.add('hidden');
   }
 
+  if (resultsView) {
+    resultsView.classList.add('hidden');
+  }
+
   setActiveNavItem('dataExport');
+}
+
+function showResultsView() {
+  saveAppStateToLocalStorage();
+  renderResultsView();
+
+  const mainWorkspace = getMainWorkspace();
+  const resultsView = ensureResultsView();
+
+  if (mainWorkspace) {
+    Array.from(mainWorkspace.children).forEach((child) => {
+      if (child === resultsView) {
+        child.classList.remove('hidden');
+      } else {
+        child.classList.add('hidden');
+      }
+    });
+  }
+
+  setActiveNavItem('results');
 }
 
 function bindNewSurveyNavigation() {
@@ -2804,6 +2970,14 @@ function bindDataExportNavigation() {
 }
 
 // DOM 获取 (更新版)
+function bindResultsNavigation() {
+  const resultsNavItem = getNavItemByKey('results');
+
+  if (resultsNavItem) {
+    resultsNavItem.addEventListener('click', showResultsView);
+  }
+}
+
 const tabs = document.querySelectorAll('.version-tab');
 const newsTabsContainer = document.getElementById('news-tabs-container');
 const noSurveyNotice = document.getElementById('no-survey-notice');
@@ -4174,5 +4348,6 @@ bindNewSurveyNavigation();
 bindProfileNavigation();
 bindHistoryNavigation();
 bindDataExportNavigation();
+bindResultsNavigation();
 lucide.createIcons(); // 初始化页面中固定的图标 (如导航栏)
 renderAll();

@@ -416,6 +416,59 @@ class DBBridge:
             )
             return publication.survey_id if publication is not None else None
 
+    def list_study_sessions_for_researcher(self, researcher_email: str) -> list[dict[str, Any]]:
+        researcher = self.get_researcher_by_email(researcher_email)
+        if researcher is None:
+            return []
+
+        with get_session() as db:
+            sessions = (
+                db.query(ParticipantSession)
+                .join(ParticipantSession.publication)
+                .join(SurveyPublication.survey)
+                .options(joinedload(ParticipantSession.publication))
+                .filter(
+                    Survey.researcher_id == researcher["researcher_id"],
+                    ParticipantSession.closed_at.isnot(None),
+                )
+                .order_by(ParticipantSession.closed_at.desc().nullslast(), ParticipantSession.started_at.desc().nullslast())
+                .all()
+            )
+
+            return [self._study_session_summary(session) for session in sessions]
+
+    def get_study_session_payload_for_researcher(self, researcher_email: str, filename: str) -> dict[str, Any] | None:
+        researcher = self.get_researcher_by_email(researcher_email)
+        if researcher is None:
+            return None
+
+        session_id = self._study_session_id_from_filename(filename)
+        if not session_id:
+            return None
+
+        with get_session() as db:
+            session = (
+                db.query(ParticipantSession)
+                .join(ParticipantSession.publication)
+                .join(SurveyPublication.survey)
+                .filter(
+                    ParticipantSession.id == session_id,
+                    Survey.researcher_id == researcher["researcher_id"],
+                )
+                .one_or_none()
+            )
+            if session is None:
+                return None
+
+            payload = safe_json_clone(session.gaze_data_json or {})
+            if isinstance(payload, dict):
+                payload.setdefault("participantId", self._session_participant_id(session))
+                payload.setdefault("inviteCode", session.publication.invite_code if session.publication else "")
+                payload.setdefault("studySessionId", session.id)
+                payload.setdefault("startedAt", session.started_at.isoformat() if session.started_at else "")
+                payload.setdefault("closedAt", session.closed_at.isoformat() if session.closed_at else "")
+            return payload
+
     # ------------------------------------------------------------------
     # Participant sessions / payload archival
     # ------------------------------------------------------------------
@@ -494,6 +547,54 @@ class DBBridge:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _study_session_filename(self, session: ParticipantSession) -> str:
+        return f"CS14_DB_{session.id}.json"
+
+    def _study_session_id_from_filename(self, filename: str) -> str | None:
+        text = str(filename or "").strip()
+        if not text.startswith("CS14_DB_") or not text.endswith(".json"):
+            return None
+        session_id = text[len("CS14_DB_"):-len(".json")]
+        return session_id if session_id else None
+
+    def _session_participant_id(self, session: ParticipantSession) -> str:
+        payload = session.gaze_data_json if isinstance(session.gaze_data_json, dict) else {}
+        participant_id = (
+            payload.get("participantId")
+            or payload.get("participant_id")
+            or payload.get("participantCode")
+            or payload.get("participant_code")
+        )
+        if participant_id:
+            return str(participant_id)
+        if session.publication is not None and session.publication.invite_code:
+            return session.publication.invite_code
+        return session.id[:6].upper()
+
+    def _study_session_summary(self, session: ParticipantSession) -> dict[str, Any]:
+        payload = session.gaze_data_json if isinstance(session.gaze_data_json, dict) else {}
+        closed_at = session.closed_at or iso_to_datetime(payload.get("closedAt")) or iso_to_datetime(payload.get("studyEndedAt"))
+        started_at = session.started_at or iso_to_datetime(payload.get("startedAt")) or iso_to_datetime(payload.get("studyStartedAt"))
+        display_time = closed_at or started_at
+        encoded_payload = json.dumps(payload or {}, ensure_ascii=False, default=str).encode("utf-8")
+        sample_count = 0
+        gaze_logs = payload.get("gazeLogs") or payload.get("gazeData") if isinstance(payload, dict) else []
+        if isinstance(gaze_logs, list):
+            sample_count = len(gaze_logs)
+
+        return {
+            "filename": self._study_session_filename(session),
+            "sessionId": session.id,
+            "participantId": self._session_participant_id(session),
+            "inviteCode": session.publication.invite_code if session.publication is not None else "",
+            "status": session.status,
+            "startedAt": started_at.isoformat() if started_at else "",
+            "completedAt": closed_at.isoformat() if closed_at else "",
+            "dateLabel": display_time.isoformat() if display_time else "",
+            "fileSizeKb": round(len(encoded_payload) / 1024),
+            "sampleCount": sample_count,
+        }
+
     def _pick_variant_for_publication(self, news_item: SurveyNewsItem, published_version_key: str) -> SurveyVariant | None:
         exact = [variant for variant in news_item.variants if variant.version_key == published_version_key]
         if exact:

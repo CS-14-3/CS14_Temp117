@@ -34,8 +34,9 @@ RESEARCHER_EDIT_HTML = ROOT_DIR / "researcher main" / "index.html"
 RESEARCHER_SCRAPER_BACKEND = ROOT_DIR / "researcher main" / "server.py"
 PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
+HEATMAP_VIEWER_HTML = BRIDGE_DIR / "heatmap_viewer.html"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "researcher-prototype6-editor-2026-05-16"
+BRIDGE_BUILD_VERSION = "researcher-results-view-2026-05-16"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -185,6 +186,12 @@ class PrototypeStore:
     def posts_for_invite(self, invite_code: str) -> list[dict[str, Any]]:
         return self.db.get_published_posts_by_invite_code(invite_code)
 
+    def study_sessions_for_researcher(self, session: dict[str, str]) -> list[dict[str, Any]]:
+        return self.db.list_study_sessions_for_researcher(session.get("email", ""))
+
+    def study_session_payload(self, session: dict[str, str], filename: str) -> dict[str, Any] | None:
+        return self.db.get_study_session_payload_for_researcher(session.get("email", ""), filename)
+
     def generate_invite_code(self) -> str:
         return self.db.generate_unique_invite_code()
 
@@ -231,6 +238,18 @@ class BasePrototypeHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_json_download(self, payload: dict[str, Any], filename: str) -> None:
+        safe_filename = re.sub(r"[^A-Za-z0-9_.-]", "_", filename or "study-session.json")
+        body = json.dumps(payload, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -353,6 +372,35 @@ class ResearcherHandler(BasePrototypeHandler):
                     "startedAt": SERVER_STARTED_AT,
                 }
             )
+            return
+
+        if path == "/viewer":
+            session = self.get_session()
+            if session is None:
+                self.redirect("/")
+                return
+            self.send_html(load_text(HEATMAP_VIEWER_HTML))
+            return
+
+        if path == "/api/study-sessions":
+            session = self.get_session()
+            if session is None:
+                self.send_json({"success": False, "sessions": [], "error": "Please log in before viewing results."}, HTTPStatus.UNAUTHORIZED)
+                return
+            self.send_json({"success": True, "sessions": self.app_state.store.study_sessions_for_researcher(session)})
+            return
+
+        if path.startswith("/api/study-data/"):
+            session = self.get_session()
+            if session is None:
+                self.send_json({"success": False, "error": "Please log in before downloading study data."}, HTTPStatus.UNAUTHORIZED)
+                return
+            filename = unquote(path[len("/api/study-data/"):])
+            payload = self.app_state.store.study_session_payload(session, filename)
+            if payload is None:
+                self.send_json({"success": False, "error": "Study session not found."}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_json_download(payload, filename)
             return
 
         if path.startswith("/api/posts/"):
@@ -2002,6 +2050,7 @@ def ensure_required_files() -> None:
         RESEARCHER_SCRAPER_BACKEND,
         PARTICIPANT_HTML,
         CAMERA_BACKEND,
+        HEATMAP_VIEWER_HTML,
     )
     missing = [str(path) for path in required if not path.exists()]
     if missing:
