@@ -542,8 +542,6 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   <div id="study-topbar">
     <span id="study-id-badge">ID: ---</span>
     <div style="display:flex;gap:8px">
-      <button id="heatmap-toggle" type="button">🔥 Heatmap</button>
-      <button id="btn-export" type="button">⬇ Export JSON</button>
       <button id="btn-finish-study" type="button">Finish Study</button>
     </div>
   </div>
@@ -1154,7 +1152,8 @@ window.addEventListener('scroll',function(){
   hmScrollRaf=requestAnimationFrame(hmRedraw);
 });
 
-document.getElementById('heatmap-toggle').addEventListener('click',function(){
+var heatmapToggle=document.getElementById('heatmap-toggle');
+if(heatmapToggle) heatmapToggle.addEventListener('click',function(){
   hmActive=!hmActive;
   this.classList.toggle('active',hmActive);
   if(hmActive){
@@ -1347,12 +1346,29 @@ function submitStudyData(payload){
   }).then(function(resp){ return resp.json().catch(function(){ return {success:resp.ok}; }); });
 }
 
+function collectQuestionAnswers(){
+  var answers=[];
+  document.querySelectorAll('.participant-question-input:checked').forEach(function(input){
+    var postIndex=Number(input.getAttribute('data-post-index'));
+    var post=postData[postIndex]||{};
+    var optionIndex=input.getAttribute('data-option-index');
+    answers.push({
+      newsIndex:Number(input.getAttribute('data-news-index')||post.newsIndex||postIndex+1),
+      postId:post.id||null,
+      optionId:input.value||null,
+      optionIndex:optionIndex==null?null:Number(optionIndex)
+    });
+  });
+  return answers;
+}
+
 function finishStudy(){
   if(appPhase!=='STUDY') return;
   var finishBtn=document.getElementById('btn-finish-study');
   if(finishBtn){finishBtn.disabled=true;finishBtn.textContent='Saving...';}
   studyData.studyEndedAt=studyData.studyEndedAt||new Date().toISOString();
   studyData.closedAt=studyData.closedAt||studyData.studyEndedAt;
+  studyData.answers=collectQuestionAnswers();
   studySendingFrames=false;
   socket.emit('save_data',studyData);
   submitStudyData(studyData).then(function(result){
@@ -1501,10 +1517,10 @@ function mkQuestionBlock(data, theme) {
         (questionBlock.required ? '<span class="participant-question-required">Required</span>' : '') +
       '</div>' +
       '<div class="participant-question-options">' +
-        questionBlock.options.map(function (option) {
+        questionBlock.options.map(function (option, optionIndex) {
           return '' +
             '<label class="' + (isDark ? 'participant-question-option participant-question-option-dark' : 'participant-question-option participant-question-option-light') + '">' +
-              '<input type="' + choiceType + '" name="' + questionName + '" value="' + eh(option.id) + '" class="participant-question-input" />' +
+              '<input type="' + choiceType + '" name="' + questionName + '" value="' + eh(option.id) + '" data-news-index="' + eh(data.newsIndex || '') + '" data-post-index="' + eh(data.__postIndex != null ? data.__postIndex : '') + '" data-option-index="' + optionIndex + '" class="participant-question-input" />' +
               '<span>' + eh(option.label) + '</span>' +
             '</label>';
         }).join('') +
@@ -1701,6 +1717,7 @@ function renderFeed() {
   }
 
   participantFeed.innerHTML = postData.map(function (post, index) {
+    post.__postIndex = index;
     return '<div class="post-feed-item" data-post-index="' + index + '">' + mkPost(index) + '</div>';
   }).join('');
 
@@ -1870,7 +1887,8 @@ function exportJSON(){
   var url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url; a.download='CS14_Data_'+participantId+'.json'; a.click(); URL.revokeObjectURL(url);
 }
-document.getElementById('btn-export').addEventListener('click',exportJSON);
+var exportBtn=document.getElementById('btn-export');
+if(exportBtn) exportBtn.addEventListener('click',exportJSON);
 document.getElementById('btn-finish-study').addEventListener('click',finishStudy);
 
 document.getElementById('verifyInviteBtn').addEventListener('click',function(){

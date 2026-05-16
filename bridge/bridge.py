@@ -36,7 +36,7 @@ PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 HEATMAP_VIEWER_HTML = BRIDGE_DIR / "heatmap_viewer.html"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "participant-finish-results-db-fix-2026-05-17"
+BRIDGE_BUILD_VERSION = "participant-answer-analysis-fix-2026-05-17"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -1532,6 +1532,7 @@ def participant_bridge_script(api_origin: str) -> str:
       image: raw.image || "",
       platform: normalizePlatform(raw.platform),
       id: raw.id || String(index + 1),
+      newsIndex: Number(raw.newsIndex || index + 1),
       avatarLetter: raw.avatarLetter || username.charAt(0).toUpperCase() || "S",
       avatar: raw.avatar || "",
       handle: raw.handle || "",

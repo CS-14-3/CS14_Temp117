@@ -467,6 +467,10 @@ class DBBridge:
                 payload.setdefault("studySessionId", session.id)
                 payload.setdefault("startedAt", session.started_at.isoformat() if session.started_at else "")
                 payload.setdefault("closedAt", session.closed_at.isoformat() if session.closed_at else "")
+                if "gazeLogs" not in payload and isinstance(payload.get("gazeData"), list):
+                    payload["gazeLogs"] = payload["gazeData"]
+                if "posts" not in payload and session.publication is not None:
+                    payload["posts"] = self._study_session_posts(session.publication)
             return payload
 
     # ------------------------------------------------------------------
@@ -594,6 +598,23 @@ class DBBridge:
             "fileSizeKb": round(len(encoded_payload) / 1024),
             "sampleCount": sample_count,
         }
+
+    def _study_session_posts(self, publication: SurveyPublication) -> list[dict[str, Any]]:
+        posts = []
+        survey = publication.survey
+        if survey is None:
+            return posts
+        for index, news_item in enumerate(sorted(survey.news_items, key=lambda item: item.sort_order), start=1):
+            variant = self._pick_variant_for_publication(news_item, publication.published_version_key)
+            if variant is None:
+                continue
+            posts.append({
+                "index": index,
+                "id": f"{publication.invite_code}_{index}",
+                "platform": variant.platform,
+                "username": variant.username or DEFAULT_USERNAME,
+            })
+        return posts
 
     def _pick_variant_for_publication(self, news_item: SurveyNewsItem, published_version_key: str) -> SurveyVariant | None:
         exact = [variant for variant in news_item.variants if variant.version_key == published_version_key]
