@@ -25,7 +25,7 @@ os.environ.setdefault("XDG_CACHE_HOME", os.path.join(RUNTIME_CACHE_DIR, "xdg"))
 import cv2  # noqa: E402
 import mediapipe as mp  # noqa: E402
 import numpy as np  # noqa: E402
-from flask import Flask, send_from_directory  # noqa: E402
+from flask import Flask, jsonify, send_from_directory  # noqa: E402
 from flask_socketio import SocketIO, emit  # noqa: E402
 from mediapipe.tasks import python  # noqa: E402
 from mediapipe.tasks.python import vision  # noqa: E402
@@ -45,6 +45,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 MODEL_PATH = os.path.join(BASE_DIR, "face_landmarker.task")
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", os.environ.get("CV_BACKEND_PORT", "5050")))
+CAMERA_BUILD_VERSION = "camera-startup-fix-2026-05-16"
 
 if not os.path.exists(MODEL_PATH):
     print(f"[INFO] Downloading model {MODEL_PATH} ...")
@@ -64,7 +65,24 @@ options = vision.FaceLandmarkerOptions(
     output_facial_transformation_matrixes=False,
     num_faces=1,
 )
-detector = vision.FaceLandmarker.create_from_options(options)
+detector = None
+detector_error = None
+
+
+def get_detector():
+    global detector, detector_error
+    if detector is not None:
+        return detector
+    if detector_error is not None:
+        return None
+
+    try:
+        detector = vision.FaceLandmarker.create_from_options(options)
+        return detector
+    except Exception as error:
+        detector_error = str(error)
+        print(f"[ERROR] MediaPipe FaceLandmarker unavailable: {detector_error}")
+        return None
 
 
 # ==================== Routes ====================
@@ -72,6 +90,17 @@ detector = vision.FaceLandmarker.create_from_options(options)
 @app.route("/")
 def calibration_page():
     return send_from_directory(BASE_DIR, CALIBRATION_FILE)
+
+
+@app.route("/healthz")
+def healthz():
+    return jsonify({
+        "success": True,
+        "service": "cs14-camera",
+        "build": CAMERA_BUILD_VERSION,
+        "detectorReady": detector is not None,
+        "detectorError": detector_error,
+    })
 
 
 @app.route("/participant")
@@ -84,6 +113,11 @@ def participant_page():
 @socketio.on("frame")
 def handle_frame(data):
     try:
+        face_detector = get_detector()
+        if face_detector is None:
+            emit("landmarks", {"detected": False, "error": detector_error or "Face detector is not available."})
+            return
+
         header, encoded = data.split(",", 1)
         img_bytes = base64.b64decode(encoded)
         nparr = np.frombuffer(img_bytes, np.uint8)
@@ -95,7 +129,7 @@ def handle_frame(data):
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        detection_result = detector.detect(mp_image)
+        detection_result = face_detector.detect(mp_image)
 
         if detection_result.face_landmarks:
             lm = detection_result.face_landmarks[0]
