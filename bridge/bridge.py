@@ -506,10 +506,11 @@ class ResearcherHandler(BasePrototypeHandler):
             html_text,
             participant_socket_bootstrap_script(self.app_state.camera_origin),
         )
-        html_text = inject_before_body_end(
-            html_text,
-            participant_bridge_script(),
-        )
+        if participant_page_has_legacy_calibration(html_text):
+            html_text = inject_before_body_end(
+                html_text,
+                participant_bridge_script(),
+            )
         self.send_html(html_text)
 
     def logout(self) -> None:
@@ -557,10 +558,11 @@ class ParticipantHandler(BasePrototypeHandler):
             html_text,
             participant_socket_bootstrap_script(self.app_state.camera_origin),
         )
-        html_text = inject_before_body_end(
-            html_text,
-            participant_bridge_script(),
-        )
+        if participant_page_has_legacy_calibration(html_text):
+            html_text = inject_before_body_end(
+                html_text,
+                participant_bridge_script(),
+            )
         self.send_html(html_text)
 
 
@@ -1794,6 +1796,10 @@ def inject_before_app_script(html_text: str, injected: str) -> str:
     if not match:
         return inject_before_body_end(html_text, injected)
     return html_text[:match.start()] + injected + "\n" + html_text[match.start():]
+
+
+def participant_page_has_legacy_calibration(html_text: str) -> bool:
+    return 'id="calScreen"' in html_text and 'id="cal-id-badge"' in html_text
 
 
 def is_external_asset_url(value: str) -> bool:
