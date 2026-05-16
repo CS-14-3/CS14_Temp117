@@ -36,7 +36,7 @@ PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 HEATMAP_VIEWER_HTML = BRIDGE_DIR / "heatmap_viewer.html"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "researcher-results-view-2026-05-16"
+BRIDGE_BUILD_VERSION = "participant-finish-results-db-fix-2026-05-17"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -191,6 +191,28 @@ class PrototypeStore:
 
     def study_session_payload(self, session: dict[str, str], filename: str) -> dict[str, Any] | None:
         return self.db.get_study_session_payload_for_researcher(session.get("email", ""), filename)
+
+    def submit_study_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        participant_code = str(
+            payload.get("participantId")
+            or payload.get("participant_id")
+            or payload.get("inviteCode")
+            or payload.get("invite_code")
+            or ""
+        ).strip()
+        invite_code = normalize_invite_code(payload.get("inviteCode") or participant_code)
+        if not invite_code:
+            raise ValueError("Invite code is required before saving study data.")
+        survey_id = self.db.get_survey_id_by_invite_code(invite_code)
+        if not survey_id:
+            raise ValueError("No published survey matches this invite code.")
+        return self.db.upsert_full_study_payload(
+            participant_code=participant_code or invite_code,
+            survey_id=survey_id,
+            invite_code=invite_code,
+            payload_type="study" if (payload.get("studyEndedAt") or payload.get("closedAt")) else "autosave",
+            payload=payload,
+        )
 
     def generate_invite_code(self) -> str:
         return self.db.generate_unique_invite_code()
@@ -463,6 +485,11 @@ class ResearcherHandler(BasePrototypeHandler):
                 self.send_json(result)
                 return
 
+            if parsed.path == "/api/study-submit":
+                result = self.app_state.store.submit_study_payload(self.read_json_body())
+                self.send_json({"success": True, **result})
+                return
+
             if parsed.path == "/api/publish":
                 session = self.get_session()
                 if session is None:
@@ -599,6 +626,22 @@ class ParticipantHandler(BasePrototypeHandler):
 
         if path.startswith(ASSET_PREFIX):
             self.serve_asset(path)
+            return
+
+        self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/api/study-submit":
+                result = self.app_state.store.submit_study_payload(self.read_json_body())
+                self.send_json({"success": True, **result})
+                return
+        except json.JSONDecodeError:
+            self.send_json({"success": False, "error": "Invalid JSON payload."}, HTTPStatus.BAD_REQUEST)
+            return
+        except ValueError as exc:
+            self.send_json({"success": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
 
         self.send_error(HTTPStatus.NOT_FOUND, "File not found")
@@ -836,7 +879,8 @@ def participant_api_bootstrap_script(api_origin: str) -> str:
     if (typeof url !== "string") return false;
     return url === "/api/invite" ||
       url.startsWith("/api/invite?") ||
-      url.startsWith("/api/posts/");
+      url.startsWith("/api/posts/") ||
+      url === "/api/study-submit";
   }}
 
   const originalFetch = window.fetch.bind(window);
@@ -1806,6 +1850,7 @@ def participant_bridge_script(api_origin: str) -> str:
       activeInviteCode = result.inviteCode || code;
       participantId = activeInviteCode;
       studyData.participantId = activeInviteCode;
+      studyData.inviteCode = activeInviteCode;
       document.getElementById("cal-id-badge").textContent = "ID: " + activeInviteCode;
       applyPublishedPosts(result.posts);
       hide("inviteScreen");

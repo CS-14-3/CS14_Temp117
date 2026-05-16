@@ -429,6 +429,9 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 #study-id-badge{font-size:11px;padding:4px 12px;border-radius:20px;background:var(--surface);border:1px solid var(--border);color:var(--muted-2);font-family:'Courier New',monospace;}
 #btn-export{height:32px;padding:0 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted-2);font-size:12px;font-weight:600;cursor:pointer;transition:.16s ease;}
 #btn-export:hover{background:var(--surface-3);color:var(--text);}
+#btn-finish-study{height:32px;padding:0 14px;border-radius:8px;background:#111827;border:1px solid #111827;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:.16s ease;}
+#btn-finish-study:hover{background:#000;}
+#btn-finish-study:disabled{opacity:.55;cursor:not-allowed;}
 /* gaze HUD */
 #gaze-hud{position:fixed;bottom:18px;right:18px;z-index:9999;display:flex;flex-direction:column;gap:6px;align-items:flex-end;pointer-events:none;}
 .gaze-badge{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;backdrop-filter:blur(12px);background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.12);}
@@ -541,6 +544,7 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
     <div style="display:flex;gap:8px">
       <button id="heatmap-toggle" type="button">🔥 Heatmap</button>
       <button id="btn-export" type="button">⬇ Export JSON</button>
+      <button id="btn-finish-study" type="button">Finish Study</button>
     </div>
   </div>
   <main class="main-content">
@@ -647,6 +651,7 @@ var appPhase = 'INVITE'; // INVITE → CAL_WELCOME → DETECTING → READY → C
 
 var studyData = {
   participantId: participantId,
+  inviteCode: null,
   startedAt: null,
   calibrationLogs: [],
   qualityMetrics: null,
@@ -1333,6 +1338,40 @@ setInterval(function(){ if(appPhase==='STUDY') socket.emit('save_data',studyData
 document.addEventListener('visibilitychange',function(){ if(document.hidden&&appPhase==='STUDY') socket.emit('save_data',studyData); });
 window.addEventListener('beforeunload',function(){ if(appPhase==='STUDY'){ studyData.studyEndedAt=new Date().toISOString(); socket.emit('save_data',studyData); } });
 
+function submitStudyData(payload){
+  return fetch('/api/study-submit', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload),
+    keepalive:true
+  }).then(function(resp){ return resp.json().catch(function(){ return {success:resp.ok}; }); });
+}
+
+function finishStudy(){
+  if(appPhase!=='STUDY') return;
+  var finishBtn=document.getElementById('btn-finish-study');
+  if(finishBtn){finishBtn.disabled=true;finishBtn.textContent='Saving...';}
+  studyData.studyEndedAt=studyData.studyEndedAt||new Date().toISOString();
+  studyData.closedAt=studyData.closedAt||studyData.studyEndedAt;
+  studySendingFrames=false;
+  socket.emit('save_data',studyData);
+  submitStudyData(studyData).then(function(result){
+    appPhase='COMPLETE';
+    if(finishBtn){finishBtn.textContent='Completed';}
+    if(!result || result.success!==false){
+      alert('Study completed. Thank you.');
+    } else {
+      alert('Study saved locally, but cloud upload failed: '+(result.error||'Unknown error'));
+      if(finishBtn){finishBtn.disabled=false;finishBtn.textContent='Finish Study';}
+      appPhase='STUDY';
+    }
+  }).catch(function(error){
+    alert('Cloud upload failed: '+(error&&error.message?error.message:error));
+    if(finishBtn){finishBtn.disabled=false;finishBtn.textContent='Finish Study';}
+    appPhase='STUDY';
+  });
+}
+
 /* ══════════════════════════════════════════════════
    POST UI HELPERS
 ══════════════════════════════════════════════════ */
@@ -1832,6 +1871,7 @@ function exportJSON(){
   a.href=url; a.download='CS14_Data_'+participantId+'.json'; a.click(); URL.revokeObjectURL(url);
 }
 document.getElementById('btn-export').addEventListener('click',exportJSON);
+document.getElementById('btn-finish-study').addEventListener('click',finishStudy);
 
 document.getElementById('verifyInviteBtn').addEventListener('click',function(){
   if(!document.getElementById('inviteInput').value.trim()){alert('Please enter an invitation code.');return;}
