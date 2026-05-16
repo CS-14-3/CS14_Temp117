@@ -150,7 +150,7 @@ const UI_TEXT = {
   'results.participant': 'Participant {{id}}',
   'results.sessions': '{{count}} sessions',
   'results.latest': 'Latest: {{date}} - {{size}}',
-  'results.downloadJson': 'JSON',
+  'results.downloadJson': 'Export JSON',
   'results.viewAnalysis': 'View Analysis',
   'language.translatePage': 'Translate page',
   'language.loading': 'Translating...',
@@ -1091,6 +1091,7 @@ function getHistorySurveyRecord(survey) {
       id: survey.id,
       title: source.title || survey.title,
       status: survey.status === 'completed' ? 'completed' : 'published',
+      dbSurveyId: survey.dbSurveyId || '',
       participantResults: Array.isArray(survey.participantResults) ? survey.participantResults : [],
       exportReady: Boolean(survey.exportReady),
       completedAt: survey.completedAt || source.completedAt,
@@ -1113,6 +1114,7 @@ function getHistorySurveyRecord(survey) {
     id: survey.id,
     title: source.title || survey.title,
     status: survey.status === 'completed' ? 'completed' : (source.status || 'published'),
+    dbSurveyId: survey.dbSurveyId || '',
     participantResults: Array.isArray(survey.participantResults) ? survey.participantResults : [],
     exportReady: Boolean(survey.exportReady),
     completedAt: survey.completedAt || source.completedAt,
@@ -1144,6 +1146,7 @@ function normalizeSurvey(survey) {
     ? normalized.participantResults.map(normalizeParticipantGazeResult).filter(Boolean)
     : [];
   normalized.exportReady = Boolean(normalized.exportReady);
+  normalized.dbSurveyId = typeof normalized.dbSurveyId === 'string' ? normalized.dbSurveyId : '';
   normalized.publishedSnapshot = normalizePublishedSnapshot(normalized.publishedSnapshot);
   const normalizedPublishedPosts = Array.isArray(normalized.publishedPosts)
     ? normalized.publishedPosts.map(normalizePublishedPost).filter(Boolean)
@@ -1588,6 +1591,9 @@ async function handlePublishSurveyClick() {
     
     const result = await response.json();
     if (result.success) {
+      if (result.post?.surveyId) {
+        currentSurvey.dbSurveyId = result.post.surveyId;
+      }
       saveAppStateToLocalStorage();
       renderHistoryView();
       alert(`${t('alert.surveyPublished')}\nInvitation Code: ${snapshot.inviteCode}`);
@@ -2357,13 +2363,7 @@ function handleHistoryClick(e) {
 function openHistoryDataExportModal(surveyId) {
   const survey = appState.surveys.find((item) => item.id === surveyId);
   if (!survey) return;
-
-  collectPendingParticipantGazeData();
-  const hasGazeData = Array.isArray(survey.participantResults) && survey.participantResults.length > 0;
-  const disabledExportClass = hasGazeData
-    ? ''
-    : ' opacity-60 cursor-not-allowed';
-  const disabledExportAttr = hasGazeData ? '' : 'disabled';
+  const exportId = survey.dbSurveyId || survey.inviteCode || survey.id;
 
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/40 z-[2200] flex items-center justify-center px-4';
@@ -2379,16 +2379,8 @@ function openHistoryDataExportModal(surveyId) {
         <span class="block text-xs font-bold uppercase text-gray-400 mb-2">${escapeHtml(t('export.inviteCode'))}</span>
         <span class="font-mono text-lg font-bold text-gray-900">${escapeHtml(survey.inviteCode || t('export.noInviteCode'))}</span>
       </div>
-      ${hasGazeData ? '' : `
-        <div class="mt-4 border border-dashed border-gray-300 rounded-lg bg-gray-50 p-4 text-center">
-          <p class="text-sm font-semibold text-gray-900">${escapeHtml(t('export.noGaze'))}</p>
-        </div>
-      `}
       <div class="flex flex-wrap justify-end gap-2 mt-5">
-        <button type="button" data-action="history-export-json" data-survey-id="${escapeHtml(survey.id)}" ${disabledExportAttr} class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors${disabledExportClass}">
-          ${escapeHtml(t('export.exportJson'))}
-        </button>
-        <button type="button" data-action="history-export-csv" data-survey-id="${escapeHtml(survey.id)}" ${disabledExportAttr} class="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors${disabledExportClass}">
+        <button type="button" data-action="history-export-csv" data-survey-id="${escapeHtml(exportId)}" class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors">
           ${escapeHtml(t('export.exportCsv'))}
         </button>
         <button type="button" data-action="close-export-modal" class="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors">
@@ -2398,7 +2390,7 @@ function openHistoryDataExportModal(surveyId) {
     </div>
   `;
 
-  overlay.addEventListener('click', async (event) => {
+  overlay.addEventListener('click', (event) => {
     const target = event.target.closest('[data-action]');
 
     if (event.target === overlay || target?.getAttribute('data-action') === 'close-export-modal') {
@@ -2409,15 +2401,10 @@ function openHistoryDataExportModal(surveyId) {
     if (!target) return;
 
     const action = target.getAttribute('data-action');
-    if (action === 'history-export-json' || action === 'history-export-csv') {
+    if (action === 'history-export-csv') {
       target.disabled = true;
       target.classList.add('opacity-60', 'cursor-not-allowed');
-      collectPendingParticipantGazeData();
-      await syncGazeDataFromServer({ notify: false });
-      exportSurveyData(
-        target.getAttribute('data-survey-id'),
-        action === 'history-export-json' ? 'json' : 'csv'
-      );
+      window.location.href = `/api/survey-export/${encodeURIComponent(target.getAttribute('data-survey-id'))}.csv`;
       target.disabled = false;
       target.classList.remove('opacity-60', 'cursor-not-allowed');
     }

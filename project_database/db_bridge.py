@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import secrets
 import string
@@ -25,6 +27,7 @@ DEFAULT_USERNAME = "sydney_news_hub"
 DEFAULT_HANDLE = "@sydneynews"
 DEFAULT_LOCATION = "Sydney, Australia"
 DEFAULT_TIME_LABEL = "Just now"
+MIN_AWARE_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def utc_now() -> datetime:
@@ -473,6 +476,52 @@ class DBBridge:
                     payload["posts"] = self._study_session_posts(session.publication)
             return payload
 
+    def export_survey_non_gaze_csv_for_researcher(self, researcher_email: str, survey_id_or_invite_code: str) -> str | None:
+        researcher = self.get_researcher_by_email(researcher_email)
+        if researcher is None:
+            return None
+
+        with get_session() as db:
+            query = (
+                db.query(Survey)
+                .options(
+                    joinedload(Survey.news_items)
+                    .joinedload(SurveyNewsItem.variants)
+                    .joinedload(SurveyVariant.question_options),
+                    joinedload(Survey.publications)
+                    .joinedload(SurveyPublication.participant_sessions)
+                    .joinedload(ParticipantSession.answers),
+                )
+            )
+            survey = (
+                query
+                .filter(
+                    Survey.id == survey_id_or_invite_code,
+                    Survey.researcher_id == researcher["researcher_id"],
+                )
+                .one_or_none()
+            )
+            if survey is None:
+                survey = (
+                    query
+                    .join(Survey.publications)
+                    .filter(
+                        SurveyPublication.invite_code == normalize_invite_code(survey_id_or_invite_code),
+                        Survey.researcher_id == researcher["researcher_id"],
+                    )
+                    .one_or_none()
+                )
+            if survey is None:
+                return None
+
+            rows = self._survey_non_gaze_export_rows(survey)
+
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=self._survey_non_gaze_export_columns())
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue()
+
     # ------------------------------------------------------------------
     # Participant sessions / payload archival
     # ------------------------------------------------------------------
@@ -615,6 +664,171 @@ class DBBridge:
                 "username": variant.username or DEFAULT_USERNAME,
             })
         return posts
+
+    def _survey_non_gaze_export_columns(self) -> list[str]:
+        return [
+            "surveys.id",
+            "surveys.title",
+            "surveys.status",
+            "survey_news_items.id",
+            "survey_news_items.sort_order",
+            "survey_news_items.source_url",
+            "survey_news_items.scraped_title",
+            "survey_variants.id",
+            "survey_variants.version_key",
+            "survey_variants.platform",
+            "survey_variants.caption",
+            "survey_variants.image_url",
+            "survey_variants.avatar_url",
+            "survey_variants.username",
+            "survey_variants.handle",
+            "survey_variants.question_text",
+            "survey_variants.question_required",
+            "survey_question_options.id",
+            "survey_question_options.sort_order",
+            "survey_question_options.option_label",
+            "survey_publications.id",
+            "survey_publications.invite_code",
+            "survey_publications.published_version_key",
+            "survey_publications.published_at",
+            "participant_sessions.id",
+            "participant_sessions.status",
+            "participant_sessions.started_at",
+            "participant_sessions.closed_at",
+            "participant_answers.id",
+            "participant_answers.session_id",
+            "participant_answers.news_item_id",
+            "participant_answers.variant_id",
+            "participant_answers.option_id",
+            "participant_answers.answered_at",
+        ]
+
+    def _survey_non_gaze_export_rows(self, survey: Survey) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        publications = sorted(survey.publications, key=lambda publication: publication.published_at or MIN_AWARE_DATETIME)
+        if not publications:
+            publications = [None]
+
+        for news_item in sorted(survey.news_items, key=lambda item: item.sort_order):
+            variants = sorted(news_item.variants, key=lambda variant: (variant.version_key, variant.platform))
+            if not variants:
+                variants = [None]
+
+            for variant in variants:
+                options = sorted(variant.question_options, key=lambda option: option.sort_order) if variant else []
+                if not options:
+                    options = [None]
+
+                for option in options:
+                    row_added = False
+                    for publication in publications:
+                        sessions = sorted(
+                            publication.participant_sessions,
+                            key=lambda item: item.started_at or MIN_AWARE_DATETIME,
+                        ) if publication else []
+                        if not sessions:
+                            rows.append(self._survey_non_gaze_export_row(
+                                survey=survey,
+                                news_item=news_item,
+                                variant=variant,
+                                option=option,
+                                publication=publication,
+                                session=None,
+                                answer=None,
+                            ))
+                            row_added = True
+                            continue
+
+                        for session in sessions:
+                            answers = [
+                                answer for answer in session.answers
+                                if answer.news_item_id == news_item.id
+                                and (variant is None or answer.variant_id == variant.id)
+                                and (option is None or answer.option_id == option.id)
+                            ]
+                            if answers:
+                                for answer in answers:
+                                    rows.append(self._survey_non_gaze_export_row(
+                                        survey=survey,
+                                        news_item=news_item,
+                                        variant=variant,
+                                        option=option,
+                                        publication=publication,
+                                        session=session,
+                                        answer=answer,
+                                    ))
+                                    row_added = True
+                            else:
+                                rows.append(self._survey_non_gaze_export_row(
+                                    survey=survey,
+                                    news_item=news_item,
+                                    variant=variant,
+                                    option=option,
+                                    publication=publication,
+                                    session=session,
+                                    answer=None,
+                                ))
+                                row_added = True
+
+                    if not row_added:
+                        rows.append(self._survey_non_gaze_export_row(
+                            survey=survey,
+                            news_item=news_item,
+                            variant=variant,
+                            option=option,
+                            publication=None,
+                            session=None,
+                            answer=None,
+                        ))
+        return rows
+
+    def _survey_non_gaze_export_row(
+        self,
+        *,
+        survey: Survey,
+        news_item: SurveyNewsItem,
+        variant: SurveyVariant | None,
+        option: SurveyQuestionOption | None,
+        publication: SurveyPublication | None,
+        session: ParticipantSession | None,
+        answer: ParticipantAnswer | None,
+    ) -> dict[str, Any]:
+        return {
+            "surveys.id": survey.id,
+            "surveys.title": survey.title,
+            "surveys.status": survey.status,
+            "survey_news_items.id": news_item.id,
+            "survey_news_items.sort_order": news_item.sort_order,
+            "survey_news_items.source_url": news_item.source_url,
+            "survey_news_items.scraped_title": news_item.scraped_title,
+            "survey_variants.id": variant.id if variant else "",
+            "survey_variants.version_key": variant.version_key if variant else "",
+            "survey_variants.platform": variant.platform if variant else "",
+            "survey_variants.caption": variant.caption if variant else "",
+            "survey_variants.image_url": variant.image_url if variant else "",
+            "survey_variants.avatar_url": variant.avatar_url if variant else "",
+            "survey_variants.username": variant.username if variant else "",
+            "survey_variants.handle": variant.handle if variant else "",
+            "survey_variants.question_text": variant.question_text if variant else "",
+            "survey_variants.question_required": variant.question_required if variant else "",
+            "survey_question_options.id": option.id if option else "",
+            "survey_question_options.sort_order": option.sort_order if option else "",
+            "survey_question_options.option_label": option.option_label if option else "",
+            "survey_publications.id": publication.id if publication else "",
+            "survey_publications.invite_code": publication.invite_code if publication else "",
+            "survey_publications.published_version_key": publication.published_version_key if publication else "",
+            "survey_publications.published_at": publication.published_at.isoformat() if publication and publication.published_at else "",
+            "participant_sessions.id": session.id if session else "",
+            "participant_sessions.status": session.status if session else "",
+            "participant_sessions.started_at": session.started_at.isoformat() if session and session.started_at else "",
+            "participant_sessions.closed_at": session.closed_at.isoformat() if session and session.closed_at else "",
+            "participant_answers.id": answer.id if answer else "",
+            "participant_answers.session_id": answer.session_id if answer else "",
+            "participant_answers.news_item_id": answer.news_item_id if answer else "",
+            "participant_answers.variant_id": answer.variant_id if answer else "",
+            "participant_answers.option_id": answer.option_id if answer else "",
+            "participant_answers.answered_at": answer.answered_at.isoformat() if answer and answer.answered_at else "",
+        }
 
     def _pick_variant_for_publication(self, news_item: SurveyNewsItem, published_version_key: str) -> SurveyVariant | None:
         exact = [variant for variant in news_item.variants if variant.version_key == published_version_key]

@@ -36,7 +36,7 @@ PARTICIPANT_HTML = ROOT_DIR / "CS14_Temp117-Backend" / "participant.html"
 CAMERA_BACKEND = ROOT_DIR / "CS14_Temp117-Backend" / "app.py"
 HEATMAP_VIEWER_HTML = BRIDGE_DIR / "heatmap_viewer.html"
 SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
-BRIDGE_BUILD_VERSION = "participant-answer-analysis-fix-2026-05-17"
+BRIDGE_BUILD_VERSION = "history-csv-export-fix-2026-05-17"
 
 # Legacy JSON files, no longer used after DB integration
 # ACCOUNTS_FILE = BRIDGE_DIR / "fake_researcher_accounts.json"
@@ -192,6 +192,9 @@ class PrototypeStore:
     def study_session_payload(self, session: dict[str, str], filename: str) -> dict[str, Any] | None:
         return self.db.get_study_session_payload_for_researcher(session.get("email", ""), filename)
 
+    def survey_non_gaze_csv(self, session: dict[str, str], survey_id: str) -> str | None:
+        return self.db.export_survey_non_gaze_csv_for_researcher(session.get("email", ""), survey_id)
+
     def submit_study_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         participant_code = str(
             payload.get("participantId")
@@ -268,6 +271,18 @@ class BasePrototypeHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, indent=2, default=str).encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_csv_download(self, csv_text: str, filename: str) -> None:
+        safe_filename = re.sub(r"[^A-Za-z0-9_.-]", "_", filename or "survey-export.csv")
+        body = csv_text.encode("utf-8-sig")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Content-Disposition", f'attachment; filename="{safe_filename}"')
         self.send_header("Cache-Control", "no-store")
@@ -423,6 +438,20 @@ class ResearcherHandler(BasePrototypeHandler):
                 self.send_json({"success": False, "error": "Study session not found."}, HTTPStatus.NOT_FOUND)
                 return
             self.send_json_download(payload, filename)
+            return
+
+        if path.startswith("/api/survey-export/"):
+            session = self.get_session()
+            if session is None:
+                self.send_json({"success": False, "error": "Please log in before exporting survey data."}, HTTPStatus.UNAUTHORIZED)
+                return
+            raw_name = unquote(path[len("/api/survey-export/"):])
+            survey_id = raw_name[:-4] if raw_name.endswith(".csv") else raw_name
+            csv_text = self.app_state.store.survey_non_gaze_csv(session, survey_id)
+            if csv_text is None:
+                self.send_json({"success": False, "error": "Survey export not found."}, HTTPStatus.NOT_FOUND)
+                return
+            self.send_csv_download(csv_text, f"survey-{survey_id}-non-gaze.csv")
             return
 
         if path.startswith("/api/posts/"):
