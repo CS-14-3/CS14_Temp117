@@ -158,7 +158,13 @@ class PrototypeStore:
             # 提取第一个新闻项以映射到现有的 SQL 数据库结构
             first_news = news_items[0]
             news_link = first_news.get('link')
-            variant = first_news.get('variant') or {}
+            version_label = str(
+                first_news.get("publishedVersionKey")
+                or payload.get("publishedVersionKey")
+                or payload.get("version")
+                or version_label
+            ).strip()
+            variant = extract_published_variant(first_news, version_label)
             platform = normalize_platform(variant.get('platform', 'instagram'))
             caption = str(variant.get('caption') or "").strip()
             image = str(variant.get('image') or "").strip()
@@ -1892,6 +1898,38 @@ def parse_int(value: Any, fallback: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return fallback
+
+
+def extract_published_variant(news_item: dict[str, Any], version_label: str) -> dict[str, Any]:
+    legacy_variant = news_item.get("variant")
+    if isinstance(legacy_variant, dict) and legacy_variant:
+        return legacy_variant
+
+    versions = news_item.get("versions")
+    if not isinstance(versions, dict) or not versions:
+        return {}
+
+    version = versions.get(version_label) or versions.get("vA") or next(iter(versions.values()))
+    if not isinstance(version, dict):
+        return {}
+
+    platform = normalize_platform(version.get("platform"))
+    platform_variants = version.get("platformVariants")
+    if isinstance(platform_variants, dict):
+        platform_variant = platform_variants.get(platform)
+        if not isinstance(platform_variant, dict):
+            platform_variant = next(
+                (value for value in platform_variants.values() if isinstance(value, dict)),
+                None,
+            )
+        if isinstance(platform_variant, dict) and platform_variant:
+            return {
+                **version,
+                **platform_variant,
+                "platform": normalize_platform(platform_variant.get("platform") or platform),
+            }
+
+    return version
 
 
 def display_origin(host: str, port: int) -> str:
