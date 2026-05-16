@@ -464,6 +464,7 @@ class ResearcherHandler(BasePrototypeHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         cookie = getattr(self, "extra_session_cookie", None)
         if cookie:
             self.send_header("Set-Cookie", cookie)
@@ -497,6 +498,10 @@ class ResearcherHandler(BasePrototypeHandler):
         page = self.app_state.participant_page
         html_text = rewrite_page_assets(page, load_text(page.entry))
         html_text = inject_before_head_end(html_text, participant_bridge_styles())
+        html_text = inject_before_head_end(
+            html_text,
+            participant_api_bootstrap_script(self.app_state.researcher_origin),
+        )
         html_text = inject_before_participant_runtime(
             html_text,
             participant_socket_bootstrap_script(self.app_state.camera_origin),
@@ -544,6 +549,10 @@ class ParticipantHandler(BasePrototypeHandler):
         page = self.app_state.participant_page
         html_text = rewrite_page_assets(page, load_text(page.entry))
         html_text = inject_before_head_end(html_text, participant_bridge_styles())
+        html_text = inject_before_head_end(
+            html_text,
+            participant_api_bootstrap_script(self.app_state.researcher_origin),
+        )
         html_text = inject_before_participant_runtime(
             html_text,
             participant_socket_bootstrap_script(self.app_state.camera_origin),
@@ -751,6 +760,33 @@ def researcher_edit_bridge_script(session: dict[str, str], participant_origin: s
   }};
 
   setUserDetails();
+}})();
+</script>
+""".strip()
+
+
+def participant_api_bootstrap_script(api_origin: str) -> str:
+    api_origin_json = json_for_script(api_origin.rstrip("/"))
+    return f"""
+<script>
+(function () {{
+  const apiOrigin = {api_origin_json};
+  window.PROTOTYPE2_API_ORIGIN = apiOrigin;
+
+  function shouldRouteThroughPublicBridge(url) {{
+    if (typeof url !== "string") return false;
+    return url === "/api/invite" ||
+      url.startsWith("/api/invite?") ||
+      url.startsWith("/api/posts/");
+  }}
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = function (resource, options) {{
+    if (shouldRouteThroughPublicBridge(resource)) {{
+      return originalFetch(apiOrigin + resource, options);
+    }}
+    return originalFetch(resource, options);
+  }};
 }})();
 </script>
 """.strip()
