@@ -1,0 +1,196 @@
+/* 自定义部分底层样式和滚动条，保持 Ins 的极简感 */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* 隐藏滚动条但保持可滚动 */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 侧边栏活动项的 Ins 风格加粗效果 */
+.nav-item {
+  transition: all 0.2s ease-in-out;
+}
+.nav-item:hover {
+  background-color: #f3f4f6;
+}
+.nav-item.active {
+  font-weight: 700;
+  background-color: #e0f2fe;
+}
+
+/* === 新增：选项卡激活样式 === */
+.tab-active {
+  border-bottom: 2px solid #0ea5e9;
+  color: #0ea5e9;
+  font-weight: 600;
+}
+.tab-inactive {
+  border-bottom: 2px solid transparent;
+  color: #6b7280;
+}
+
+/* === 新增：多新闻切换标签样式 === */
+.news-tab {
+  transition: all 0.2s ease;
+  position: relative;
+}
+.news-tab.active {
+  background-color: #2563eb; /* blue-600 */
+  color: white;
+}
+.news-tab.inactive {
+  background-color: #f3f4f6; /* gray-100 */
+  color: #4b5563; /* gray-600 */
+}
+.news-tab.inactive:hover {
+  background-color: #e5e7eb; /* gray-200 */
+}
+
+/* === 新增：删除按钮样式 === */
+.news-tab .btn-delete-news {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  background-color: #ef4444; /* red-500 */
+  color: white;
+  border-radius: 9999px;
+  display: flex;
+  items-center: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+  border: 1px solid white;
+}
+.news-tab:hover .btn-delete-news {
+  opacity: 1;
+}
+.news-tab .btn-delete-news i {
+  width: 10px;
+  height: 10px;
+}
+
+/* === 新增：可编辑预览元素样式 === */
+[data-editable] {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+[data-editable]:hover {
+  outline: 2px dashed #0ea5e9;
+  outline-offset: 2px;
+  background-color: rgba(14, 165, 233, 0.05);
+}
+
+[data-editable-type="icon"]:hover::after {
+  content: 'Edit Icon';
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  z-index: 50;
+}
+
+/* 编辑文本框样式 */
+.edit-input-overlay {
+  position: absolute;
+  z-index: 100;
+  background: white;
+  border: 2px solid #0ea5e9;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: black;
+  width: auto;
+  min-width: 50px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* 移除按钮样式 */
+.remove-element-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background-color: #ef4444;
+  color: white;
+  border-radius: 9999px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 50;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.group:hover .remove-element-btn {
+  opacity: 1;
+}
+
+/* 占位符样式 */
+.image-placeholder {
+  background-color: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+}
+
+/* 确保可编辑容器是 relative 的，以便放置移除按钮 */
+[data-editable-container] {
+  position: relative;
+  display: block; /* 改为 block 以便占据宽度，或者在需要时通过 class 覆盖 */
+}
+
+/* 针对行内元素的特殊处理 */
+span[data-editable-container], 
+a[data-editable-container],
+i[data-editable-container] {
+  display: inline-block;
+}
+
+/* 图标选择器弹窗 */
+#icon-picker-modal {
+  position: fixed;
+  z-index: 1000;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  padding: 12px;
+  width: 240px;
+  display: none;
+}
+.icon-option {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  items-center: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.icon-option:hover {
+  background-color: #f3f4f6;
+  color: #2563eb;
+}

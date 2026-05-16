@@ -1,0 +1,50 @@
+.DS_Store
+.idea/
+.vscode/
+
+.env
+.env.*
+!.env.example
+.published_posts_store.json
+
+.venv/
+**/.venv/
+
+__pycache__/
+*.py[cod]
+*.pyo
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+CS14_Temp117-Backend/.runtime_cache/
+CS14_Temp117-Backend/data/
+
+.claude/
+.claude/settings.local.json
+
+prototype2.0/fake_researcher_accounts.json
+prototype2.0/published_posts.json
+
+# -----------------------
+# Deployment additions
+# -----------------------
+
+# Database
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# Docker
+Dockerfile*
+docker-compose*
+
+# Local/exported data
+CS14_Data_*.json
+
+# Archives
+*.zip

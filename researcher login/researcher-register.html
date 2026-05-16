@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Researcher Sign Up</title>
+    <link rel="stylesheet" href="./researcher-login.css" />
+  </head>
+  <body>
+    <main
+      class="page"
+      data-register-root
+      data-login-route="/login"
+      data-file-login-route="./researcher-login.html"
+    >
+      <section class="shell">
+        <div class="brand-block">
+          <h1 class="brand">SurveyLab</h1>
+        </div>
+
+        <div class="card">
+          <div class="copy-block">
+            <h2 class="title">Create your account</h2>
+            <p class="subtitle">
+              Set up researcher access for the SurveyLab prototype.
+            </p>
+          </div>
+
+          <form class="form" id="researcher-register-form">
+            <div class="field">
+              <label class="label" for="researcher-username">Username</label>
+              <div class="input-shell">
+                <span class="icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <circle cx="12" cy="8" r="4" stroke-width="1.8"></circle>
+                    <path
+                      d="M4 21a8 8 0 0 1 16 0"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    ></path>
+                  </svg>
+                </span>
+                <input
+                  id="researcher-username"
+                  name="username"
+                  type="text"
+                  placeholder="Username"
+                  autocomplete="username"
+                  class="input"
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="label" for="researcher-password">Password</label>
+              <div class="input-shell">
+                <span class="icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <rect
+                      x="5"
+                      y="11"
+                      width="14"
+                      height="10"
+                      rx="2"
+                      stroke-width="1.8"
+                    ></rect>
+                    <path
+                      d="M8 11V8a4 4 0 1 1 8 0v3"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    ></path>
+                  </svg>
+                </span>
+                <input
+                  id="researcher-password"
+                  name="password"
+                  type="password"
+                  placeholder="Password"
+                  autocomplete="new-password"
+                  class="input"
+                />
+              </div>
+            </div>
+
+            <button type="submit" class="primary-button">Create Account</button>
+          </form>
+        </div>
+
+        <div class="support-card">
+          <p class="support-text">Already have an account?</p>
+          <button
+            type="button"
+            class="support-button"
+            data-route="/login"
+            data-file-route="./researcher-login.html"
+          >
+            Back to log in
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./researcher-register.js"></script>
+  </body>
+</html>

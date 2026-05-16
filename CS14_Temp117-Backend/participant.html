@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SurveyLab – Participant Study</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+/* ════════════════════════════════════════════════
+   BASE / VARIABLES
+════════════════════════════════════════════════ */
+:root {
+  --bg: #fafafa; --surface: #ffffff; --surface-3: #f5f5f5;
+  --border: #dbdbdb; --border-soft: #efefef;
+  --text: #262626; --muted: #8e8e8e; --muted-2: #737373;
+  --accent: #0095f6; --accent-hover: #1877f2; --accent-soft: #b2dffc;
+  --danger: #ed4956;
+  --shadow: 0 12px 32px rgba(15,23,42,0.08);
+  --shadow-soft: 0 6px 18px rgba(15,23,42,0.06);
+  --story-gradient: linear-gradient(135deg,#feda75 0%,#fa7e1e 20%,#d62976 55%,#962fbf 78%,#4f5bd5 100%);
+  --placeholder-bg: #efefef; --placeholder-icon: #c7c7cf;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#000; --surface:#121212; --surface-3:#101010;
+    --border:#2a2a2a; --border-soft:#222;
+    --text:#f5f5f5; --muted:#a8a8a8; --muted-2:#8e8e8e;
+    --accent:#0095f6; --accent-hover:#1aa2ff; --accent-soft:#6bbef6;
+    --danger:#ff5c75;
+    --shadow:0 12px 32px rgba(0,0,0,0.35); --shadow-soft:0 6px 18px rgba(0,0,0,0.28);
+    --placeholder-bg:#1f1f1f; --placeholder-icon:#5b5b63;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg);}
+body{min-height:100vh;}
+button,input{font:inherit;}
+button{border:none;background:none;cursor:pointer;}
+svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.hidden{display:none!important;}
+.hide-scrollbar::-webkit-scrollbar{display:none;}
+.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+
+/* ════════════════════════════════════════════════
+   STEP 1 — INVITE SCREEN
+════════════════════════════════════════════════ */
+.invite-screen{min-height:100vh;display:grid;place-items:center;padding:32px 20px;background:var(--bg);}
+.invite-card{width:min(100%,420px);background:var(--surface);border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow);padding:36px 32px;text-align:center;}
+.invite-title{margin:0 0 12px;font-size:28px;font-weight:700;}
+.invite-description{margin:0 0 24px;color:var(--muted-2);font-size:15px;line-height:1.65;}
+.invite-form{display:flex;flex-direction:column;gap:14px;}
+.invite-input{width:100%;border:1px solid var(--border);background:var(--surface-3);color:var(--text);border-radius:12px;padding:14px 16px;font-size:15px;outline:none;}
+.invite-input:focus{border-color:var(--accent-soft);box-shadow:0 0 0 3px rgba(0,149,246,.12);}
+.primary-btn,.secondary-btn{height:44px;border-radius:10px;font-weight:600;transition:.16s ease;}
+.primary-btn{background:var(--accent);color:#fff;}
+.primary-btn:hover{background:var(--accent-hover);}
+
+/* ════════════════════════════════════════════════
+   STEP 2 — MAIN FEED PAGE
+════════════════════════════════════════════════ */
+.page{width:100%;min-height:100vh;padding:0px 18px 40px;background:var(--bg);}
+.main-content{width:min(100%,920px);margin:0 auto;}
+
+.participant-feed-stage {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.participant-feed-shell {
+  width: min(100%, 1120px);
+}
+
+.participant-feed {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+  padding: 8px 0 24px;
+  align-items: start;
+}
+
+.participant-feed-column {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.participant-feed .post-feed-item {
+  width: 100%;
+  display: block;
+}
+
+/* Platform card styles */
+.prototype2-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.prototype2-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.prototype2-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prototype2-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--placeholder-bg);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.prototype2-media-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.prototype2-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.prototype2-subline {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.prototype2-media {
+  width: 100%;
+  background: var(--placeholder-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prototype2-media.square { aspect-ratio: 1 / 1; }
+.prototype2-media.landscape { aspect-ratio: 16 / 9; }
+
+.prototype2-empty-media {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--placeholder-icon);
+  font-size: 14px;
+}
+
+.prototype2-body {
+  padding: 12px 16px;
+}
+
+.prototype2-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.prototype2-action-group {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.prototype2-platform-action {
+  width: 24px;
+  height: 24px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.prototype2-like-line {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.prototype2-caption {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.prototype2-comments-link {
+  color: var(--muted-2);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.prototype2-instagram-time {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Facebook specific */
+.prototype2-facebook-caption { padding: 12px 16px; font-size: 14px; }
+.prototype2-facebook-stats { padding: 10px 16px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; font-size: 12px; color: var(--muted-2); }
+.prototype2-facebook-buttons { display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px; }
+.prototype2-facebook-buttons button { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; font-size: 13px; font-weight: 600; color: var(--muted-2); }
+
+/* X specific */
+.prototype2-x-layout { display: flex; gap: 12px; padding: 12px 16px; }
+.prototype2-x-content { flex: 1; }
+.prototype2-x-meta { display: flex; align-items: center; gap: 4px; font-size: 14px; margin-bottom: 4px; }
+.prototype2-x-handle { color: var(--muted-2); }
+.prototype2-x-actions { display: flex; justify-content: space-between; margin-top: 12px; color: var(--muted-2); }
+.prototype2-x-actions button { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+
+/* TikTok specific */
+.prototype2-tiktok { position: relative; width: 320px; height: 580px; background: #000; color: #fff; border: none; border-radius: 22px; overflow: hidden; margin: 0 auto; }
+.prototype2-tiktok .prototype2-media { height: 100%; background: #111; position: absolute; inset: 0; }
+.prototype2-tiktok-side { position: absolute; right: 12px; bottom: 160px; display: flex; flex-direction: column; align-items: center; gap: 20px; z-index: 10; }
+.prototype2-tiktok-action { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: #fff; }
+.prototype2-tiktok-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  position: relative;
+  margin-bottom: 8px;
+  background: #333;
+}
+.prototype2-tiktok-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.prototype2-tiktok-avatar span {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fe2c55;
+  color: #fff;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+}
+.prototype2-tiktok-copy { position: absolute; left: 12px; bottom: 20px; right: 80px; z-index: 10; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.prototype2-tiktok-copy p { margin: 6px 0; line-height: 1.4; }
+.prototype2-tiktok-sound { display: flex; align-items: center; gap: 6px; font-size: 12px; opacity: 0.8; }
+
+/* Question Block Styles */
+.question-block-wrapper {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+.prototype2-tiktok .question-block-wrapper {
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  margin-top: 10px;
+}
+.question-text {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+.question-required-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  float: right;
+}
+.prototype2-tiktok .question-required-badge { color: rgba(255, 255, 255, 0.5); }
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.question-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.prototype2-tiktok .question-option {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+.question-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.prototype2-tiktok .question-option.selected {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: #fff;
+}
+.question-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.prototype2-tiktok .question-option:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #fff;
+}
+.question-radio {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+}
+.question-option.selected .question-radio::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+.prototype2-tiktok .question-option.selected .question-radio::after {
+  background: #fff;
+}
+.prototype2-tiktok .question-radio { border-color: rgba(255, 255, 255, 0.3); }
+
+/* Language Switch */
+.participant-language-switch {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 1500;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--border);
+}
+
+.participant-lang-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted-2);
+}
+
+.participant-lang-btn.active { background: var(--accent); color: #fff; }
+
+/* Finish Survey */
+.study-finish-wrap { display: flex; justify-content: center; padding: 40px 0 80px; }
+.study-finish-btn { min-width: 180px; height: 44px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 700; }
+
+.finish-screen { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.finish-card { width: min(100%, 440px); background: var(--surface); border: 1px solid var(--border); border-radius: 24px; padding: 40px; text-align: center; }
+
+@media (max-width: 900px) {
+  .participant-feed { grid-template-columns: 1fr; }
+}
+  </style>
+</head>
+<body>
+
+<!-- ════════════ STEP 1: INVITE SCREEN ════════════ -->
+<section class="invite-screen" id="inviteScreen">
+  <div class="invite-card">
+    <h1 class="invite-title">Enter Invitation Code</h1>
+    <p class="invite-description">Please enter your invitation code to access the participant interface.</p>
+    <div class="invite-form">
+      <input type="text" id="inviteInput" class="invite-input" placeholder="Enter invitation code" />
+      <button id="verifyInviteBtn" class="primary-btn" type="button">Verify Code</button>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ STEP 2: MAIN FEED PAGE ════════════ -->
+<div class="page hidden" id="mainPage">
+  <div class="participant-language-switch">
+    <button class="participant-lang-btn active" type="button" data-lang="en">English</button>
+    <button class="participant-lang-btn" type="button" data-lang="zh">中文</button>
+  </div>
+
+  <main class="main-content">
+    <section class="participant-feed-stage">
+      <div class="participant-feed-shell">
+        <div id="participantFeed" class="participant-feed"></div>
+        <div class="study-finish-wrap">
+          <button id="btnFinishSurvey" class="study-finish-btn" type="button" data-i18n-key="finishButton">Finish Survey</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ════════════ STEP 3: FINISH SCREEN ════════════ -->
+<section class="finish-screen hidden" id="finishScreen">
+  <div class="finish-card">
+    <h1 data-i18n-key="finishTitle">Survey Completed</h1>
+    <p data-i18n-key="finishText">Thank you. Your survey has been completed successfully.</p>
+  </div>
+</section>
+
+<script>
+/* ══════════════════════════════════════════════════
+   STATE & DATA
+══════════════════════════════════════════════════ */
+var postData = [];
+var participantLang = 'en';
+var participantI18n = {
+  en: { finishButton: 'Finish Survey', finishTitle: 'Survey Completed', finishText: 'Thank you. Your survey has been completed successfully.' },
+  zh: { finishButton: '结束问卷', finishTitle: '问卷已完成', finishText: '感谢参与。您的问卷已经成功完成。' }
+};
+
+/* ══════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════ */
+function eh(v) { return String(v == null ? '' : v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#039;"); }
+function fc(v) { return Number(v).toLocaleString('en-US'); }
+function lucideIcon(name, cls) { return '<i data-lucide="' + eh(name) + '" class="' + (cls || '') + '"></i>'; }
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+function renderQuestionBlock(d) {
+  var qb = d.questionBlock;
+  if (!qb || !qb.questionText) return '';
+  
+  var html = '<div class="question-block-wrapper" data-post-id="' + eh(d.id) + '">';
+  html += '<div class="question-text">';
+  if (qb.required) html += '<span class="question-required-badge">Required</span>';
+  html += eh(qb.questionText) + '</div>';
+  html += '<div class="question-options">';
+  (qb.options || []).forEach(function(opt, idx) {
+    html += '<div class="question-option" data-option-id="' + eh(opt.id) + '" data-option-index="' + idx + '"><div class="question-radio"></div>' + eh(opt.label) + '</div>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
+function handleOptionClick(e) {
+  var option = e.target.closest('.question-option');
+  if (!option) return;
+  
+  var wrapper = option.closest('.question-block-wrapper');
+  var options = wrapper.querySelectorAll('.question-option');
+  
+  // 取消其他选项的选择
+  options.forEach(function(opt) { opt.classList.remove('selected'); });
+  
+  // 选中当前选项
+  option.classList.add('selected');
+  
+  // 这里以后可以添加保存到数据库的逻辑
+  console.log('Post ID:', wrapper.dataset.postId, 'Selected Option:', option.dataset.optionId);
+}
+
+/* ══════════════════════════════════════════════════
+   POST BUILDERS
+══════════════════════════════════════════════════ */
+function mkPost(index) {
+  var d = postData[index];
+  var platform = d.platform || 'instagram';
+  if (platform === 'facebook') return mkFacebookPost(d, index);
+  if (platform === 'x') return mkXPost(d, index);
+  if (platform === 'tiktok') return mkTikTokPost(d, index);
+  return mkInstagramPost(d, index);
+}
+
+function mkInstagramPost(d, i) {
+  return '<article class="prototype2-card">' +
+    '<div class="prototype2-card-header"><div class="prototype2-user"><div class="prototype2-avatar">' + (d.avatar ? '<img class="prototype2-media-img" src="'+eh(d.avatar)+'">' : eh(d.username.charAt(0).toUpperCase())) + '</div><div><div class="prototype2-name">'+eh(d.username)+'</div><div class="prototype2-subline">'+eh(d.location)+'</div></div></div></div>' +
+    '<div class="prototype2-media square">' + (d.image ? '<img class="prototype2-media-img" src="'+eh(d.image)+'">' : '<div class="prototype2-empty-media">'+lucideIcon('image','w-10 h-10')+'<span>[No Image]</span></div>') + '</div>' +
+    '<div class="prototype2-body"><div class="prototype2-action-row"><div class="prototype2-action-group">'+lucideIcon('heart','w-6 h-6')+lucideIcon('message-circle','w-6 h-6')+lucideIcon('send','w-6 h-6')+'</div>'+lucideIcon('bookmark','w-6 h-6')+'</div>' +
+    '<div class="prototype2-like-line">'+fc(d.likes)+' likes</div><div class="prototype2-caption"><strong>'+eh(d.username)+'</strong> '+eh(d.caption)+'</div>' +
+    '<div class="prototype2-comments-link">View all '+fc(d.comments)+' comments</div><div class="prototype2-instagram-time">'+eh(d.time)+'</div>' +
+    renderQuestionBlock(d) +
+    '</div></article>';
+}
+
+function mkFacebookPost(d, i) {
+  return '<article class="prototype2-card">' +
+    '<div class="prototype2-card-header"><div class="prototype2-user"><div class="prototype2-avatar">' + (d.avatar ? '<img class="prototype2-media-img" src="'+eh(d.avatar)+'">' : eh(d.username.charAt(0).toUpperCase())) + '</div><div><div class="prototype2-name">'+eh(d.username)+'</div><div class="prototype2-subline">'+eh(d.time)+' · Public</div></div></div></div>' +
+    '<div class="prototype2-facebook-caption">'+eh(d.caption)+'</div>' +
+    '<div class="prototype2-media landscape">' + (d.image ? '<img class="prototype2-media-img" src="'+eh(d.image)+'">' : '<div class="prototype2-empty-media">'+lucideIcon('image','w-10 h-10')+'</div>') + '</div>' +
+    '<div class="prototype2-body">' + renderQuestionBlock(d) + '</div>' +
+    '<div class="prototype2-facebook-stats"><span>'+lucideIcon('thumbs-up','w-3 h-3')+' '+fc(d.likes)+'</span><span>'+fc(d.comments)+' comments · '+fc(d.shares)+' shares</span></div>' +
+    '<div class="prototype2-facebook-buttons"><button>'+lucideIcon('thumbs-up','w-5 h-5')+' Like</button><button>'+lucideIcon('message-square','w-5 h-5')+' Comment</button><button>'+lucideIcon('share-2','w-5 h-5')+' Share</button></div></article>';
+}
+
+function mkXPost(d, i) {
+  return '<article class="prototype2-card"><div class="prototype2-x-layout"><div class="prototype2-avatar">' + (d.avatar ? '<img class="prototype2-media-img" src="'+eh(d.avatar)+'">' : eh(d.username.charAt(0).toUpperCase())) + '</div>' +
+    '<div class="prototype2-x-content"><div class="prototype2-x-meta"><strong>'+eh(d.username)+'</strong><span class="prototype2-x-handle">'+eh(d.handle)+' · '+eh(d.time)+'</span></div>' +
+    '<div class="prototype2-x-caption">'+eh(d.caption)+'</div>' +
+    '<div class="prototype2-media landscape">' + (d.image ? '<img class="prototype2-media-img" src="'+eh(d.image)+'">' : '<div class="prototype2-empty-media">'+lucideIcon('image','w-10 h-10')+'</div>') + '</div>' +
+    renderQuestionBlock(d) +
+    '<div class="prototype2-x-actions"><button>'+lucideIcon('message-circle','w-4 h-4')+' '+fc(d.comments)+'</button><button>'+lucideIcon('repeat','w-4 h-4')+' '+fc(d.shares)+'</button><button>'+lucideIcon('heart','w-4 h-4')+' '+fc(d.likes)+'</button><button>'+lucideIcon('bar-chart-2','w-4 h-4')+'</button></div></div></div></article>';
+}
+
+function mkTikTokPost(d, i) {
+  return '<article class="prototype2-card prototype2-tiktok">' +
+    '<div class="prototype2-media">' + (d.image ? '<img class="prototype2-media-img" src="'+eh(d.image)+'">' : '<div class="prototype2-empty-media">'+lucideIcon('play-circle','w-12 h-12')+'</div>') + '</div>' +
+    '<div class="prototype2-tiktok-side"><div class="prototype2-tiktok-avatar">'+(d.avatar ? '<img class="prototype2-media-img" src="'+eh(d.avatar)+'">' : eh(d.username.charAt(0).toUpperCase()))+'<span>+</span></div>' +
+    '<div class="prototype2-tiktok-action">'+lucideIcon('heart','w-8 h-8')+'<span>'+fc(d.likes)+'</span></div><div class="prototype2-tiktok-action">'+lucideIcon('message-circle','w-8 h-8')+'<span>'+fc(d.comments)+'</span></div><div class="prototype2-tiktok-action">'+lucideIcon('bookmark','w-8 h-8')+'<span>'+fc(d.shares)+'</span></div></div>' +
+    '<div class="prototype2-tiktok-copy"><strong>'+eh(d.handle || d.username)+'</strong><p>'+eh(d.caption)+'</p><div class="prototype2-tiktok-sound">'+lucideIcon('music','w-4 h-4')+'<span>original sound</span></div>' +
+    renderQuestionBlock(d) +
+    '</div></article>';
+}
+
+/* ══════════════════════════════════════════════════
+   CORE LOGIC
+══════════════════════════════════════════════════ */
+function renderFeed() {
+  var feed = document.getElementById('participantFeed');
+  if (!postData.length) { feed.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted);">No posts found for this code.</div>'; return; }
+  
+  feed.innerHTML = '<div class="participant-feed-column" id="leftCol"></div><div class="participant-feed-column" id="rightCol"></div>';
+  var left = document.getElementById('leftCol'), right = document.getElementById('rightCol');
+
+  postData.forEach(function(post, i) {
+    var item = document.createElement('div');
+    item.className = 'post-feed-item';
+    item.innerHTML = mkPost(i);
+    (i % 2 === 0 || window.innerWidth <= 900) ? left.appendChild(item) : right.appendChild(item);
+  });
+
+  // 绑定选项点击事件
+  feed.addEventListener('click', handleOptionClick);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function verifyInvite() {
+  var code = document.getElementById('inviteInput').value.trim();
+  if (!code) { alert('Please enter a code.'); return; }
+
+  try {
+    var resp = await fetch('/api/posts/' + encodeURIComponent(code));
+    var json = await resp.json();
+    if (json.success && json.posts.length) {
+      postData = json.posts;
+      hide('inviteScreen');
+      show('mainPage');
+      renderFeed();
+    } else {
+      alert('Invalid invitation code or no posts found.');
+    }
+  } catch (e) {
+    alert('Error connecting to server.');
+  }
+}
+
+function applyLang(lang) {
+  participantLang = lang;
+  document.querySelectorAll('[data-i18n-key]').forEach(el => {
+    el.textContent = participantI18n[lang][el.getAttribute('data-i18n-key')];
+  });
+  document.querySelectorAll('.participant-lang-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === lang);
+  });
+}
+
+/* ══════════════════════════════════════════════════
+   EVENTS
+══════════════════════════════════════════════════ */
+document.getElementById('verifyInviteBtn').onclick = verifyInvite;
+document.getElementById('inviteInput').onkeydown = e => { if(e.key==='Enter') verifyInvite(); };
+document.getElementById('btnFinishSurvey').onclick = () => { hide('mainPage'); show('finishScreen'); };
+document.querySelectorAll('.participant-lang-btn').forEach(btn => {
+  btn.onclick = () => applyLang(btn.dataset.lang);
+});
+
+applyLang('en');
+</script>
+</body>
+</html>
