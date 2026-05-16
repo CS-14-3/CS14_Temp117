@@ -1,10 +1,9 @@
-from project_database.db import ensure_database_exists, init_db
+from project_database.db import init_db
 
 if __name__ == "__main__":
     try:
-        ensure_database_exists()
         init_db()
-        print("Database and tables are ready.")
+        print("Database tables are ready.")
     except Exception as e:
-        print(f"Failed to prepare database: {e}")
+        print(f"Failed to prepare database tables: {e}")
         raise

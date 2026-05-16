@@ -10,11 +10,12 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
 DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 DB_NAME = os.environ.get("DB_NAME", "capstone5703")
+DB_SSLMODE = os.environ.get("DB_SSLMODE", "require")
 MAINTENANCE_DB = "postgres"
 
 DATABASE_URL = (
     f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}?sslmode=require"
+    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}?sslmode={DB_SSLMODE}"
 )
 
 MAINTENANCE_DATABASE_URL = (
