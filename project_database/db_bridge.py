@@ -4,29 +4,27 @@ import json
 import secrets
 import string
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from project_database.db import SessionLocal, init_db
-from project_database.database_structure.auth_models import Researcher, ResearcherSession
+from project_database.database_structure.auth_models import Researcher
+from project_database.database_structure.participant_models import ParticipantAnswer, ParticipantSession
 from project_database.database_structure.survey_models import (
     Survey,
-    SurveyPublishLog,
-    SurveyVersion,
+    SurveyNewsItem,
+    SurveyPublication,
+    SurveyQuestionOption,
+    SurveyVariant,
 )
-from project_database.database_structure.participant_models import (
-    Participant,
-    ParticipantInteractionLog,
-    StudySession,
-)
-from project_database.database_structure.gaze_models import (
-    CalibrationResult,
-    CalibrationSample,
-    GazePayloadArchive,
-    GazeRecord,
-)
+
+
+DEFAULT_USERNAME = "sydney_news_hub"
+DEFAULT_HANDLE = "@sydneynews"
+DEFAULT_LOCATION = "Sydney, Australia"
+DEFAULT_TIME_LABEL = "Just now"
 
 
 def utc_now() -> datetime:
@@ -44,18 +42,24 @@ def normalize_invite_code(value: Any) -> str:
     return cleaned[:20]
 
 
-def derive_display_name(email: str, fallback: str = "Researcher") -> str:
-    local = email.split("@", 1)[0].strip()
-    if not local:
-        return fallback
-    parts = [p for p in local.replace(".", " ").replace("_", " ").replace("-", " ").split() if p]
-    if not parts:
-        return fallback
-    return " ".join(part[:1].upper() + part[1:] for part in parts[:2])
+def safe_json_clone(value: Any) -> Any:
+    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
 
 
-def safe_json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)
+def iso_to_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
 
 
 @contextmanager
@@ -72,10 +76,6 @@ def get_session() -> Session:
 
 
 class DBBridge:
-    """
-    Thin database service layer for integrating the prototype with SQLAlchemy models.
-    """
-
     def __init__(self, auto_init: bool = False) -> None:
         if auto_init:
             init_db()
@@ -83,7 +83,6 @@ class DBBridge:
     # ------------------------------------------------------------------
     # Researcher auth
     # ------------------------------------------------------------------
-
     def register_researcher(
         self,
         *,
@@ -92,50 +91,32 @@ class DBBridge:
         password: str,
         role: str = "researcher",
     ) -> dict[str, Any]:
-        normalized_email = normalize_email(email)
+        del role
+        username = normalize_email(email)
         password = str(password or "").strip()
-        display_name = str(name or "").strip() or derive_display_name(normalized_email)
+        display_name = str(name or "").strip() or username.split("@", 1)[0] or "Researcher"
 
-        if not normalized_email:
+        if not username:
             raise ValueError("Email is required.")
         if not password:
             raise ValueError("Password is required.")
 
         with get_session() as db:
-            existing = (
-                db.query(Researcher)
-                .filter(Researcher.email == normalized_email)
-                .one_or_none()
-            )
-
+            existing = db.query(Researcher).filter(Researcher.username == username).one_or_none()
             if existing is not None:
                 raise ValueError("This email is already registered.")
 
-            researcher = Researcher(
-                email=normalized_email,
-                password=password,
-                display_name=display_name,
-                role=role,
-                account_status="active",
-            )
+            researcher = Researcher(username=username, password_hash=password)
             db.add(researcher)
             db.flush()
 
-            session_obj = self._create_session_record(
-                db,
-                researcher=researcher,
-                ip_address=None,
-                user_agent=None,
-            )
-            db.flush()
-
             return {
-                "researcher_id": researcher.researcher_id,
-                "email": researcher.email,
-                "name": researcher.display_name,
-                "initial": researcher.initial,
-                "session_token": session_obj.session_token,
-                "session_id": session_obj.session_id,
+                "researcher_id": researcher.id,
+                "email": researcher.username,
+                "name": display_name,
+                "initial": (display_name[:1] or "R").upper(),
+                "session_token": secrets.token_urlsafe(24),
+                "session_id": researcher.id,
             }
 
     def login_researcher(
@@ -146,207 +127,164 @@ class DBBridge:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> dict[str, Any] | None:
-        normalized_email = normalize_email(email)
+        del ip_address, user_agent
+        username = normalize_email(email)
         password = str(password or "").strip()
 
         with get_session() as db:
-            researcher = (
-                db.query(Researcher)
-                .filter(Researcher.email == normalized_email)
-                .one_or_none()
-            )
-            if researcher is None:
-                return None
-            if researcher.password != password:
-                return None
-            if researcher.account_status != "active":
+            researcher = db.query(Researcher).filter(Researcher.username == username).one_or_none()
+            if researcher is None or researcher.password_hash != password:
                 return None
 
-            researcher.last_login_at = utc_now()
-
-            session_obj = self._create_session_record(
-                db,
-                researcher=researcher,
-                ip_address=ip_address,
-                user_agent=user_agent,
-            )
-            db.flush()
-
+            display_name = username.split("@", 1)[0] or username or "Researcher"
             return {
-                "researcher_id": researcher.researcher_id,
-                "email": researcher.email,
-                "name": researcher.display_name,
-                "initial": researcher.initial,
-                "session_token": session_obj.session_token,
-                "session_id": session_obj.session_id,
+                "researcher_id": researcher.id,
+                "email": researcher.username,
+                "name": display_name,
+                "initial": (display_name[:1] or "R").upper(),
+                "session_token": secrets.token_urlsafe(24),
+                "session_id": researcher.id,
             }
 
     def get_researcher_by_session_token(self, session_token: str) -> dict[str, Any] | None:
-        token = str(session_token or "").strip()
-        if not token:
-            return None
-
-        now = utc_now()
-        with get_session() as db:
-            session_obj = (
-                db.query(ResearcherSession)
-                .filter(ResearcherSession.session_token == token)
-                .one_or_none()
-            )
-            if session_obj is None:
-                return None
-            if session_obj.is_revoked:
-                return None
-            if session_obj.expires_at <= now:
-                return None
-
-            session_obj.last_seen_at = now
-            researcher = session_obj.researcher
-
-            return {
-                "researcher_id": researcher.researcher_id,
-                "email": researcher.email,
-                "name": researcher.display_name,
-                "initial": researcher.initial,
-                "session_token": session_obj.session_token,
-                "session_id": session_obj.session_id,
-            }
+        del session_token
+        return None
 
     def revoke_session(self, session_token: str) -> bool:
-        token = str(session_token or "").strip()
-        if not token:
-            return False
-
-        with get_session() as db:
-            session_obj = (
-                db.query(ResearcherSession)
-                .filter(ResearcherSession.session_token == token)
-                .one_or_none()
-            )
-            if session_obj is None:
-                return False
-
-            session_obj.is_revoked = True
-            session_obj.last_seen_at = utc_now()
-            return True
-
-    def _create_session_record(
-        self,
-        db: Session,
-        *,
-        researcher: Researcher,
-        ip_address: str | None,
-        user_agent: str | None,
-        ttl_hours: int = 8,
-    ) -> ResearcherSession:
-        token = secrets.token_urlsafe(32)
-        now = utc_now()
-
-        session_obj = ResearcherSession(
-            researcher_id=researcher.researcher_id,
-            session_token=token,
-            issued_at=now,
-            expires_at=now + timedelta(hours=ttl_hours),
-            last_seen_at=now,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            is_revoked=False,
-        )
-        db.add(session_obj)
-        return session_obj
+        del session_token
+        return False
 
     def get_researcher_by_email(self, email: str) -> dict[str, Any] | None:
-        normalized_email = normalize_email(email)
-        if not normalized_email:
+        username = normalize_email(email)
+        if not username:
             return None
 
         with get_session() as db:
-            researcher = (
-                db.query(Researcher)
-                .filter(Researcher.email == normalized_email)
-                .one_or_none()
-            )
+            researcher = db.query(Researcher).filter(Researcher.username == username).one_or_none()
             if researcher is None:
                 return None
+            return self._researcher_to_dict(researcher)
+
+    # ------------------------------------------------------------------
+    # Survey publishing
+    # ------------------------------------------------------------------
+    def publish_survey_snapshot(self, *, researcher_email: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+        researcher = self.get_researcher_by_email(researcher_email)
+        if researcher is None:
+            raise ValueError("Researcher account not found.")
+
+        invite_code = normalize_invite_code(snapshot.get("inviteCode"))
+        if not invite_code:
+            raise ValueError("Invite code is required before publishing.")
+
+        title = str(snapshot.get("title") or "Untitled survey").strip() or "Untitled survey"
+        published_version_key = str(snapshot.get("publishedVersionKey") or "vA").strip() or "vA"
+        published_at = iso_to_datetime(snapshot.get("publishedAt")) or utc_now()
+        news_payloads = snapshot.get("news") if isinstance(snapshot.get("news"), list) else []
+        if not news_payloads:
+            raise ValueError("At least one news item is required before publishing.")
+
+        with get_session() as db:
+            existing_publication = (
+                db.query(SurveyPublication)
+                .filter(SurveyPublication.invite_code == invite_code)
+                .one_or_none()
+            )
+            if existing_publication is not None:
+                raise ValueError("This invite code is already in use.")
+
+            survey = Survey(
+                researcher_id=researcher["researcher_id"],
+                title=title,
+                status="published",
+                created_at=iso_to_datetime(snapshot.get("createdAt")) or published_at,
+                updated_at=published_at,
+            )
+            db.add(survey)
+            db.flush()
+
+            saved_posts: list[dict[str, Any]] = []
+            for index, news_payload in enumerate(news_payloads, start=1):
+                news_item = SurveyNewsItem(
+                    survey_id=survey.id,
+                    sort_order=index,
+                    source_url=str(news_payload.get("link") or "").strip(),
+                    scraped_title=self._extract_news_title(news_payload),
+                    created_at=published_at,
+                )
+                db.add(news_item)
+                db.flush()
+
+                version_key = str(news_payload.get("publishedVersionKey") or published_version_key).strip() or published_version_key
+                variant_payload = self._extract_published_variant(news_payload, version_key)
+                variant = SurveyVariant(
+                    news_item_id=news_item.id,
+                    version_key=version_key,
+                    platform=self._normalize_platform(variant_payload.get("platform")),
+                    caption=str(variant_payload.get("caption") or "").strip() or None,
+                    image_url=self._empty_to_none(variant_payload.get("image")),
+                    avatar_url=self._empty_to_none(variant_payload.get("avatar")),
+                    username=self._empty_to_none(variant_payload.get("username")),
+                    handle=self._empty_to_none(variant_payload.get("handle")),
+                    hidden_elements_json=self._normalize_hidden_elements(variant_payload.get("hiddenElements")),
+                    question_text=self._extract_question_text(variant_payload.get("questionBlock")),
+                    question_required=self._extract_question_required(variant_payload.get("questionBlock")),
+                    created_at=published_at,
+                    updated_at=published_at,
+                )
+                db.add(variant)
+                db.flush()
+
+                question_block = self._normalize_question_block(variant_payload.get("questionBlock"))
+                for option_index, option in enumerate(question_block.get("options", []), start=1):
+                    option_obj = SurveyQuestionOption(
+                        variant_id=variant.id,
+                        sort_order=option_index,
+                        option_label=str(option.get("label") or f"Option {option_index}").strip() or f"Option {option_index}",
+                    )
+                    db.add(option_obj)
+                    db.flush()
+
+                saved_posts.append(self._build_participant_post(db, news_item, variant, invite_code, index))
+
+            publication = SurveyPublication(
+                survey_id=survey.id,
+                invite_code=invite_code,
+                published_version_key=published_version_key,
+                published_at=published_at,
+            )
+            db.add(publication)
+            db.flush()
 
             return {
-                "researcher_id": researcher.researcher_id,
-                "email": researcher.email,
-                "name": researcher.display_name,
-                "initial": researcher.initial,
-                "role": researcher.role,
-                "account_status": researcher.account_status,
-            }    
-
-    # ------------------------------------------------------------------
-    # Survey / researcher main
-    # ------------------------------------------------------------------
+                "survey": self._survey_to_dict(survey),
+                "publication": self._publication_to_dict(publication),
+                "posts": saved_posts,
+            }
 
     def create_survey(
         self,
         *,
         researcher_id: str,
-        survey_title: str | None = None,
-        research_description: str | None = None,
         news_link: str | None = None,
         scraped_title: str | None = None,
         scraped_image_url: str | None = None,
     ) -> dict[str, Any]:
+        del scraped_image_url
+        title = str(scraped_title or "Untitled survey").strip() or "Untitled survey"
         with get_session() as db:
-            survey = Survey(
-                researcher_id=researcher_id,
-                survey_title=survey_title,
-                research_description=research_description,
-                news_link=news_link,
-                scraped_title=scraped_title,
-                scraped_image_url=scraped_image_url,
-                status="draft",
-                is_published=False,
-            )
+            survey = Survey(researcher_id=researcher_id, title=title, status="draft")
             db.add(survey)
             db.flush()
-
-            return self._survey_to_dict(survey)
-
-    def update_survey(
-        self,
-        *,
-        survey_id: str,
-        survey_title: str | None = None,
-        research_description: str | None = None,
-        news_link: str | None = None,
-        scraped_title: str | None = None,
-        scraped_image_url: str | None = None,
-        invite_code: str | None = None,
-        survey_link: str | None = None,
-        status: str | None = None,
-        is_published: bool | None = None,
-    ) -> dict[str, Any]:
-        with get_session() as db:
-            survey = db.query(Survey).filter(Survey.survey_id == survey_id).one_or_none()
-            if survey is None:
-                raise ValueError("Survey not found.")
-
-            if survey_title is not None:
-                survey.survey_title = survey_title
-            if research_description is not None:
-                survey.research_description = research_description
-            if news_link is not None:
-                survey.news_link = news_link
-            if scraped_title is not None:
-                survey.scraped_title = scraped_title
-            if scraped_image_url is not None:
-                survey.scraped_image_url = scraped_image_url
-            if invite_code is not None:
-                survey.invite_code = normalize_invite_code(invite_code)
-            if survey_link is not None:
-                survey.survey_link = survey_link
-            if status is not None:
-                survey.status = status
-            if is_published is not None:
-                survey.is_published = is_published
-
-            db.flush()
+            if news_link:
+                news_item = SurveyNewsItem(
+                    survey_id=survey.id,
+                    sort_order=1,
+                    source_url=str(news_link).strip(),
+                    scraped_title=scraped_title,
+                )
+                db.add(news_item)
+                db.flush()
             return self._survey_to_dict(survey)
 
     def upsert_survey_version(
@@ -355,182 +293,127 @@ class DBBridge:
         survey_id: str,
         version_label: str,
         platform: str,
-        caption: str | None,
-        image_url: str | None,
-        likes_count: int = 0,
-        comments_count: int = 0,
-        shares_count: int = 0,
+        caption: str | None = None,
+        image_url: str | None = None,
+        likes_count: int | None = None,
+        comments_count: int | None = None,
+        shares_count: int | None = None,
         is_default: bool = False,
     ) -> dict[str, Any]:
-        label = str(version_label or "").strip()
-        if not label:
-            raise ValueError("version_label is required.")
-
+        del likes_count, comments_count, shares_count, is_default
         with get_session() as db:
-            version = (
-                db.query(SurveyVersion)
+            news_item = (
+                db.query(SurveyNewsItem)
+                .filter(SurveyNewsItem.survey_id == survey_id)
+                .order_by(SurveyNewsItem.sort_order.asc())
+                .first()
+            )
+            if news_item is None:
+                news_item = SurveyNewsItem(survey_id=survey_id, sort_order=1, source_url="", scraped_title=None)
+                db.add(news_item)
+                db.flush()
+
+            variant = (
+                db.query(SurveyVariant)
                 .filter(
-                    SurveyVersion.survey_id == survey_id,
-                    SurveyVersion.version_label == label,
+                    SurveyVariant.news_item_id == news_item.id,
+                    SurveyVariant.version_key == version_label,
+                    SurveyVariant.platform == self._normalize_platform(platform),
                 )
                 .one_or_none()
             )
-
-            if version is None:
-                version = SurveyVersion(
-                    survey_id=survey_id,
-                    version_label=label,
+            if variant is None:
+                variant = SurveyVariant(
+                    news_item_id=news_item.id,
+                    version_key=version_label,
+                    platform=self._normalize_platform(platform),
                 )
-                db.add(version)
+                db.add(variant)
 
-            version.platform = str(platform or "instagram").strip().lower() or "instagram"
-            version.caption = caption
-            version.image_url = image_url
-            version.likes_count = int(likes_count or 0)
-            version.comments_count = int(comments_count or 0)
-            version.shares_count = int(shares_count or 0)
-            version.is_default = bool(is_default)
-
-            if is_default:
-                (
-                    db.query(SurveyVersion)
-                    .filter(
-                        SurveyVersion.survey_id == survey_id,
-                        SurveyVersion.version_label != label,
-                    )
-                    .update({"is_default": False}, synchronize_session=False)
-                )
-
+            variant.caption = self._empty_to_none(caption)
+            variant.image_url = self._empty_to_none(image_url)
             db.flush()
-            return self._survey_version_to_dict(version)
-
-    def get_survey_with_versions(self, survey_id: str) -> dict[str, Any] | None:
-        with get_session() as db:
-            survey = db.query(Survey).filter(Survey.survey_id == survey_id).one_or_none()
-            if survey is None:
-                return None
-
-            versions = (
-                db.query(SurveyVersion)
-                .filter(SurveyVersion.survey_id == survey.survey_id)
-                .order_by(SurveyVersion.version_label.asc())
-                .all()
-            )
-
-            data = self._survey_to_dict(survey)
-            data["versions"] = [self._survey_version_to_dict(v) for v in versions]
-            return data
+            return self._variant_to_legacy_dict(variant)
 
     def publish_survey_version(
         self,
         *,
         survey_id: str,
         version_label: str,
-        published_by_researcher_id: str | None,
-        invite_code: str | None,
-        participant_link: str | None,
+        published_by_researcher_id: str | None = None,
+        invite_code: str | None = None,
+        participant_link: str | None = None,
     ) -> dict[str, Any]:
-        label = str(version_label or "").strip()
-        if not label:
-            raise ValueError("version_label is required.")
-
+        del published_by_researcher_id, participant_link
         with get_session() as db:
-            survey = db.query(Survey).filter(Survey.survey_id == survey_id).one_or_none()
-            if survey is None:
-                raise ValueError("Survey not found.")
-
-            version = (
-                db.query(SurveyVersion)
-                .filter(
-                    SurveyVersion.survey_id == survey_id,
-                    SurveyVersion.version_label == label,
-                )
-                .one_or_none()
+            survey = db.query(Survey).filter(Survey.id == survey_id).one()
+            invite = normalize_invite_code(invite_code) or self._generate_unique_invite_code(db)
+            existing = db.query(SurveyPublication).filter(SurveyPublication.invite_code == invite).one_or_none()
+            if existing is not None:
+                raise ValueError("This invite code is already in use.")
+            publication = SurveyPublication(
+                survey_id=survey.id,
+                invite_code=invite,
+                published_version_key=version_label,
             )
-            if version is None:
-                raise ValueError("Survey version not found.")
-
-            normalized_code = normalize_invite_code(invite_code) or self.generate_unique_invite_code(db)
-
-            survey.invite_code = normalized_code
-            survey.survey_link = participant_link
             survey.status = "published"
-            survey.is_published = True
-
-            publish_log = SurveyPublishLog(
-                survey_id=survey.survey_id,
-                survey_version_id=version.survey_version_id,
-                published_by_researcher_id=published_by_researcher_id,
-                invite_code=normalized_code,
-                participant_link=participant_link,
-                version_label=version.version_label,
-                platform=version.platform,
-                caption=version.caption,
-                image_url=version.image_url,
-                likes_count=version.likes_count,
-                comments_count=version.comments_count,
-                shares_count=version.shares_count,
-            )
-            db.add(publish_log)
+            db.add(publication)
             db.flush()
-
             return {
                 "survey": self._survey_to_dict(survey),
-                "version": self._survey_version_to_dict(version),
-                "publish_log": self._publish_log_to_dict(publish_log),
+                "publish_log": self._publication_to_legacy_dict(publication, db),
             }
 
     def get_published_posts_by_invite_code(self, invite_code: str) -> list[dict[str, Any]]:
-        normalized_code = normalize_invite_code(invite_code)
-        if not normalized_code:
+        code = normalize_invite_code(invite_code)
+        if not code:
             return []
 
         with get_session() as db:
-            logs = (
-                db.query(SurveyPublishLog)
-                .filter(SurveyPublishLog.invite_code == normalized_code)
-                .order_by(SurveyPublishLog.published_at.asc())
-                .all()
-            )
-
-            return [self._publish_log_to_participant_post(log) for log in logs]
-
-    def generate_unique_invite_code(self, db: Session | None = None, length: int = 6) -> str:
-        owns_session = db is None
-        if owns_session:
-            context = get_session()
-            db_cm = context
-            db = db_cm.__enter__()
-
-        try:
-            for _ in range(30):
-                candidate = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(length))
-                exists = (
-                    db.query(SurveyPublishLog)
-                    .filter(SurveyPublishLog.invite_code == candidate)
-                    .first()
+            publication = (
+                db.query(SurveyPublication)
+                .options(
+                    joinedload(SurveyPublication.survey)
+                    .joinedload(Survey.news_items)
+                    .joinedload(SurveyNewsItem.variants)
+                    .joinedload(SurveyVariant.question_options)
                 )
-                if exists is None:
-                    return candidate
-            return "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(length + 2))
-        finally:
-            if owns_session:
-                db_cm.__exit__(None, None, None)
+                .filter(SurveyPublication.invite_code == code)
+                .order_by(SurveyPublication.published_at.desc())
+                .first()
+            )
+            if publication is None or publication.survey is None:
+                return []
+
+            posts: list[dict[str, Any]] = []
+            for index, news_item in enumerate(sorted(publication.survey.news_items, key=lambda item: item.sort_order), start=1):
+                variant = self._pick_variant_for_publication(news_item, publication.published_version_key)
+                if variant is None:
+                    continue
+                posts.append(self._build_participant_post(db, news_item, variant, publication.invite_code, index))
+            return posts
+
+    def generate_unique_invite_code(self, length: int = 6) -> str:
+        with get_session() as db:
+            return self._generate_unique_invite_code(db, length=length)
 
     def get_survey_id_by_invite_code(self, invite_code: str) -> str | None:
-        normalized_code = normalize_invite_code(invite_code)
-        if not normalized_code:
+        code = normalize_invite_code(invite_code)
+        if not code:
             return None
 
         with get_session() as db:
-            log = (
-                db.query(SurveyPublishLog)
-                .filter(SurveyPublishLog.invite_code == normalized_code)
-                .order_by(SurveyPublishLog.published_at.desc())
+            publication = (
+                db.query(SurveyPublication)
+                .filter(SurveyPublication.invite_code == code)
+                .order_by(SurveyPublication.published_at.desc())
                 .first()
             )
-            return log.survey_id if log else None
-        
+            return publication.survey_id if publication is not None else None
+
+    # ------------------------------------------------------------------
+    # Participant sessions / payload archival
+    # ------------------------------------------------------------------
     def upsert_full_study_payload(
         self,
         *,
@@ -540,678 +423,326 @@ class DBBridge:
         payload_type: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        del participant_code, payload_type
+        normalized_invite = normalize_invite_code(invite_code)
+        started_at = (
+            iso_to_datetime(payload.get("startedAt"))
+            or iso_to_datetime(payload.get("studyStartedAt"))
+            or utc_now()
+        )
+        closed_at = iso_to_datetime(payload.get("closedAt")) or iso_to_datetime(payload.get("studyEndedAt"))
+        status = "completed" if closed_at else "started"
+        gaze_logs = payload.get("gazeLogs") if isinstance(payload.get("gazeLogs"), list) else []
+
         with get_session() as db:
-            participant = (
-                db.query(Participant)
-                .filter(Participant.participant_code == participant_code)
-                .one_or_none()
-            )
-            if participant is None:
-                participant = Participant(participant_code=participant_code)
-                db.add(participant)
-                db.flush()
+            publication = None
+            if normalized_invite:
+                publication = (
+                    db.query(SurveyPublication)
+                    .filter(SurveyPublication.invite_code == normalized_invite)
+                    .order_by(SurveyPublication.published_at.desc())
+                    .first()
+                )
+            if publication is None and survey_id:
+                publication = (
+                    db.query(SurveyPublication)
+                    .filter(SurveyPublication.survey_id == survey_id)
+                    .order_by(SurveyPublication.published_at.desc())
+                    .first()
+                )
+            if publication is None:
+                raise ValueError("No published survey matches this payload.")
 
-            started_at = self._iso_to_datetime(payload.get("startedAt")) or utc_now()
-            normalized_invite = normalize_invite_code(invite_code)
-
-            study_session = (
-                db.query(StudySession)
+            session = (
+                db.query(ParticipantSession)
                 .filter(
-                    StudySession.participant_id == participant.participant_id,
-                    StudySession.started_at == started_at,
+                    ParticipantSession.publication_id == publication.id,
+                    ParticipantSession.started_at == started_at,
                 )
                 .one_or_none()
             )
-
-            if study_session is None:
-                study_session = StudySession(
-                    participant_id=participant.participant_id,
-                    survey_id=survey_id,
-                    invite_code=normalized_invite,
-                    session_status="completed" if payload.get("studyEndedAt") else "started",
+            if session is None:
+                session = ParticipantSession(
+                    publication_id=publication.id,
                     started_at=started_at,
-                    calibration_started_at=self._iso_to_datetime(payload.get("startedAt")),
-                    calibration_completed_at=self._iso_to_datetime(payload.get("studyStartedAt")),
-                    study_started_at=self._iso_to_datetime(payload.get("studyStartedAt")),
-                    study_ended_at=self._iso_to_datetime(payload.get("studyEndedAt")),
-                    exported_at=None,
+                    closed_at=closed_at,
+                    status=status,
+                    gaze_data_json=safe_json_clone(payload),
                 )
-                db.add(study_session)
+                db.add(session)
                 db.flush()
             else:
-                study_session.survey_id = survey_id
-                study_session.invite_code = normalized_invite
-                study_session.session_status = "completed" if payload.get("studyEndedAt") else "started"
-                study_session.calibration_started_at = self._iso_to_datetime(payload.get("startedAt"))
-                study_session.calibration_completed_at = self._iso_to_datetime(payload.get("studyStartedAt"))
-                study_session.study_started_at = self._iso_to_datetime(payload.get("studyStartedAt"))
-                study_session.study_ended_at = self._iso_to_datetime(payload.get("studyEndedAt"))
-
-            # 覆盖结构化子数据，避免 autosave 重复堆积
-            db.query(ParticipantInteractionLog).filter(
-                ParticipantInteractionLog.study_session_id == study_session.study_session_id
-            ).delete(synchronize_session=False)
-
-            existing_results = (
-                db.query(CalibrationResult)
-                .filter(CalibrationResult.study_session_id == study_session.study_session_id)
-                .all()
-            )
-            for result in existing_results:
-                db.delete(result)
-
-            db.query(GazeRecord).filter(
-                GazeRecord.study_session_id == study_session.study_session_id
-            ).delete(synchronize_session=False)
-
-            # interaction logs
-            interaction_count = 0
-            for item in payload.get("interactionLogs", []):
-                log = ParticipantInteractionLog(
-                    study_session_id=study_session.study_session_id,
-                    event_type=str(item.get("type") or item.get("event_type") or "unknown"),
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    event_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                    event_payload=safe_json_dumps(item),
-                )
-                db.add(log)
-                interaction_count += 1
-
-            # calibration result + samples
-            quality_metrics = payload.get("qualityMetrics") or {}
-            calibration_logs = payload.get("calibrationLogs") or []
-
-            calibration_result_id = None
-            calibration_sample_count = 0
-
-            if quality_metrics or calibration_logs:
-                calibration_result = CalibrationResult(
-                    study_session_id=study_session.study_session_id,
-                    overall_score=self._to_float(quality_metrics.get("overall")),
-                    score_percent=self._to_int(quality_metrics.get("scorePercent")),
-                    passed=bool(quality_metrics.get("pass", False)),
-                    quality_threshold=self._to_float(quality_metrics.get("quality_threshold")),
-                    total_points=self._infer_total_points(quality_metrics, calibration_logs),
-                    raw_quality_metrics=safe_json_dumps(quality_metrics),
-                )
-                db.add(calibration_result)
+                session.closed_at = closed_at or session.closed_at
+                session.status = status if status == "completed" else session.status
+                session.gaze_data_json = safe_json_clone(payload)
                 db.flush()
-                calibration_result_id = calibration_result.calibration_result_id
 
-                for item in calibration_logs:
-                    target = item.get("target") or {}
-                    sample = CalibrationSample(
-                        calibration_result_id=calibration_result.calibration_result_id,
-                        study_session_id=study_session.study_session_id,
-                        target_index=self._to_int(item.get("targetIdx")),
-                        target_x=self._to_float(target.get("x")),
-                        target_y=self._to_float(target.get("y")),
-                        iris_x=self._to_float(item.get("irisX")),
-                        iris_y=self._to_float(item.get("irisY")),
-                        sample_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                    )
-                    db.add(sample)
-                    calibration_sample_count += 1
-
-            # gaze records
-            gaze_count = 0
-            for item in payload.get("gazeLogs", []):
-                record = GazeRecord(
-                    study_session_id=study_session.study_session_id,
-                    survey_id=survey_id,
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    iris_x=self._to_float(item.get("irisX")),
-                    iris_y=self._to_float(item.get("irisY")),
-                    iris_z=self._to_float(item.get("irisZ")),
-                    face_detected=bool(item.get("faceDetected", False)),
-                    gaze_region=str(item.get("gazedRegion") or "") or None,
-                    screen_x=self._to_float(item.get("screenX")),
-                    screen_y=self._to_float(item.get("screenY")),
-                    recorded_at=self._ts_to_datetime(item.get("t")) or utc_now(),
-                )
-                db.add(record)
-                gaze_count += 1
-
-            # 保留 archive 历史
-            archive = GazePayloadArchive(
-                study_session_id=study_session.study_session_id,
-                payload_type=str(payload_type or "study"),
-                payload_json=safe_json_dumps(payload),
-            )
-            db.add(archive)
-            db.flush()
+            self._upsert_answers_from_payload(db, session, publication, payload)
 
             return {
-                "participant_id": participant.participant_id,
-                "study_session_id": study_session.study_session_id,
-                "calibration_result_id": calibration_result_id,
-                "interaction_logs_saved": interaction_count,
-                "calibration_samples_saved": calibration_sample_count,
-                "gaze_records_saved": gaze_count,
-                "payload_archive_id": archive.payload_archive_id,
+                "study_session_id": session.id,
+                "gaze_records_saved": len(gaze_logs),
+                "calibration_samples_saved": len(payload.get("calibrationLogs", []) or []),
+                "interaction_logs_saved": 0,
             }
 
     # ------------------------------------------------------------------
-    # Participant / study session
+    # Internal helpers
     # ------------------------------------------------------------------
+    def _pick_variant_for_publication(self, news_item: SurveyNewsItem, published_version_key: str) -> SurveyVariant | None:
+        exact = [variant for variant in news_item.variants if variant.version_key == published_version_key]
+        if exact:
+            return exact[0]
+        return news_item.variants[0] if news_item.variants else None
 
-    def get_or_create_participant(self, participant_code: str) -> dict[str, Any]:
-        code = str(participant_code or "").strip()
-        if not code:
-            raise ValueError("participant_code is required.")
-
-        with get_session() as db:
-            participant = (
-                db.query(Participant)
-                .filter(Participant.participant_code == code)
-                .one_or_none()
-            )
-            if participant is None:
-                participant = Participant(participant_code=code)
-                db.add(participant)
-                db.flush()
-
-            return self._participant_to_dict(participant)
-
-    def create_study_session(
+    def _build_participant_post(
         self,
-        *,
-        participant_code: str,
-        survey_id: str | None,
-        invite_code: str | None,
-        session_status: str = "started",
-        started_at: datetime | None = None,
+        db: Session,
+        news_item: SurveyNewsItem,
+        variant: SurveyVariant,
+        invite_code: str,
+        index: int,
     ) -> dict[str, Any]:
-        with get_session() as db:
-            participant = (
-                db.query(Participant)
-                .filter(Participant.participant_code == participant_code)
-                .one_or_none()
-            )
-            if participant is None:
-                participant = Participant(participant_code=participant_code)
-                db.add(participant)
-                db.flush()
+        del db
+        hidden = variant.hidden_elements_json or {}
+        username = variant.username or DEFAULT_USERNAME
+        handle = variant.handle or DEFAULT_HANDLE
+        options = [
+            {"id": option.id, "label": option.option_label}
+            for option in sorted(variant.question_options, key=lambda item: item.sort_order)
+        ]
+        return {
+            "id": f"{invite_code}_{index}",
+            "inviteCode": invite_code,
+            "surveyId": news_item.survey_id,
+            "newsIndex": index,
+            "newsLink": news_item.source_url,
+            "versionKey": variant.version_key,
+            "platform": variant.platform,
+            "caption": variant.caption or "",
+            "image": "" if hidden.get("image") else (variant.image_url or ""),
+            "avatar": "" if hidden.get("avatar") else (variant.avatar_url or ""),
+            "likes": 0,
+            "comments": 0,
+            "shares": 0,
+            "username": "" if hidden.get("username") else username,
+            "handle": handle,
+            "location": "",
+            "time": DEFAULT_TIME_LABEL,
+            "hiddenElements": hidden,
+            "questionBlock": {
+                "questionText": variant.question_text or "",
+                "required": bool(variant.question_required),
+                "options": options,
+            },
+        }
 
-            study_session = StudySession(
-                participant_id=participant.participant_id,
-                survey_id=survey_id,
-                invite_code=normalize_invite_code(invite_code),
-                session_status=session_status,
-                started_at=started_at or utc_now(),
-            )
-            db.add(study_session)
-            db.flush()
+    def _normalize_platform(self, value: Any) -> str:
+        platform = str(value or "instagram").strip().lower()
+        if platform in {"twitter", "x"}:
+            return "x"
+        if platform in {"instagram", "facebook", "tiktok"}:
+            return platform
+        return "instagram"
 
-            return self._study_session_to_dict(study_session)
+    def _empty_to_none(self, value: Any) -> str | None:
+        text = str(value or "").strip()
+        return text or None
 
-    def update_study_session(
+    def _extract_news_title(self, news_payload: dict[str, Any]) -> str | None:
+        title = str(news_payload.get("title") or news_payload.get("scraped_title") or "").strip()
+        if title:
+            return title
+        variant = self._extract_published_variant(news_payload, str(news_payload.get("publishedVersionKey") or "vA"))
+        return self._empty_to_none(variant.get("caption"))
+
+    def _extract_published_variant(self, news_payload: dict[str, Any], version_key: str) -> dict[str, Any]:
+        versions = news_payload.get("versions") if isinstance(news_payload.get("versions"), dict) else {}
+        version_payload = versions.get(version_key) or next(iter(versions.values()), {})
+        if not isinstance(version_payload, dict):
+            version_payload = {}
+        platform = self._normalize_platform(version_payload.get("platform"))
+        platform_variants = version_payload.get("platformVariants") if isinstance(version_payload.get("platformVariants"), dict) else {}
+        variant_payload = platform_variants.get(platform) or version_payload
+        if not isinstance(variant_payload, dict):
+            variant_payload = {}
+        return {**variant_payload, "platform": platform}
+
+    def _normalize_hidden_elements(self, value: Any) -> dict | None:
+        return value if isinstance(value, dict) else None
+
+    def _normalize_question_block(self, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {"questionText": "", "required": False, "options": []}
+        options = value.get("options") if isinstance(value.get("options"), list) else []
+        normalized_options = []
+        for index, option in enumerate(options[:4], start=1):
+            if isinstance(option, dict):
+                label = str(option.get("label") or f"Option {index}").strip() or f"Option {index}"
+            else:
+                label = str(option or f"Option {index}").strip() or f"Option {index}"
+            normalized_options.append({"label": label})
+        return {
+            "questionText": str(value.get("questionText") or "").strip(),
+            "required": bool(value.get("required")),
+            "options": normalized_options,
+        }
+
+    def _extract_question_text(self, value: Any) -> str | None:
+        question_block = self._normalize_question_block(value)
+        return self._empty_to_none(question_block.get("questionText"))
+
+    def _extract_question_required(self, value: Any) -> bool:
+        question_block = self._normalize_question_block(value)
+        return bool(question_block.get("required"))
+
+    def _generate_unique_invite_code(self, db: Session, length: int = 6) -> str:
+        alphabet = string.ascii_uppercase + string.digits
+        while True:
+            candidate = "".join(secrets.choice(alphabet) for _ in range(length))
+            exists = db.query(SurveyPublication).filter(SurveyPublication.invite_code == candidate).one_or_none()
+            if exists is None:
+                return candidate
+
+    def _upsert_answers_from_payload(
         self,
-        *,
-        study_session_id: str,
-        session_status: str | None = None,
-        started_at: datetime | None = None,
-        calibration_started_at: datetime | None = None,
-        calibration_completed_at: datetime | None = None,
-        study_started_at: datetime | None = None,
-        study_ended_at: datetime | None = None,
-        exported_at: datetime | None = None,
-    ) -> dict[str, Any]:
-        with get_session() as db:
-            study_session = (
-                db.query(StudySession)
-                .filter(StudySession.study_session_id == study_session_id)
-                .one_or_none()
-            )
-            if study_session is None:
-                raise ValueError("Study session not found.")
-
-            if session_status is not None:
-                study_session.session_status = session_status
-            if started_at is not None:
-                study_session.started_at = started_at
-            if calibration_started_at is not None:
-                study_session.calibration_started_at = calibration_started_at
-            if calibration_completed_at is not None:
-                study_session.calibration_completed_at = calibration_completed_at
-            if study_started_at is not None:
-                study_session.study_started_at = study_started_at
-            if study_ended_at is not None:
-                study_session.study_ended_at = study_ended_at
-            if exported_at is not None:
-                study_session.exported_at = exported_at
-
-            db.flush()
-            return self._study_session_to_dict(study_session)
-
-    def save_interaction_logs(
-        self,
-        *,
-        study_session_id: str,
-        logs: list[dict[str, Any]],
-    ) -> int:
-        if not logs:
-            return 0
-
-        with get_session() as db:
-            count = 0
-            for item in logs:
-                log = ParticipantInteractionLog(
-                    study_session_id=study_session_id,
-                    event_type=str(item.get("type") or item.get("event_type") or "unknown"),
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    event_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                    event_payload=safe_json_dumps(item),
-                )
-                db.add(log)
-                count += 1
-
-            return count
-
-    # ------------------------------------------------------------------
-    # Calibration / gaze
-    # ------------------------------------------------------------------
-
-    def save_calibration_result_with_samples(
-        self,
-        *,
-        study_session_id: str,
-        quality_metrics: dict[str, Any] | None,
-        calibration_logs: list[dict[str, Any]] | None,
-        quality_threshold: float | None = None,
-        total_points: int | None = None,
-    ) -> dict[str, Any]:
-        quality_metrics = quality_metrics or {}
-        calibration_logs = calibration_logs or []
-
-        with get_session() as db:
-            result = CalibrationResult(
-                study_session_id=study_session_id,
-                overall_score=self._to_float(quality_metrics.get("overall")),
-                score_percent=self._to_int(quality_metrics.get("scorePercent")),
-                passed=bool(quality_metrics.get("pass", False)),
-                quality_threshold=quality_threshold if quality_threshold is not None else self._to_float(quality_metrics.get("quality_threshold")),
-                total_points=total_points if total_points is not None else self._infer_total_points(quality_metrics, calibration_logs),
-                raw_quality_metrics=safe_json_dumps(quality_metrics),
-            )
-            db.add(result)
-            db.flush()
-
-            samples_saved = 0
-            for item in calibration_logs:
-                target = item.get("target") or {}
-                sample = CalibrationSample(
-                    calibration_result_id=result.calibration_result_id,
-                    study_session_id=study_session_id,
-                    target_index=self._to_int(item.get("targetIdx")),
-                    target_x=self._to_float(target.get("x")),
-                    target_y=self._to_float(target.get("y")),
-                    iris_x=self._to_float(item.get("irisX")),
-                    iris_y=self._to_float(item.get("irisY")),
-                    sample_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                )
-                db.add(sample)
-                samples_saved += 1
-
-            db.flush()
-            return {
-                "calibration_result_id": result.calibration_result_id,
-                "samples_saved": samples_saved,
-            }
-
-    def save_gaze_records(
-        self,
-        *,
-        study_session_id: str,
-        survey_id: str | None,
-        gaze_logs: list[dict[str, Any]],
-    ) -> int:
-        if not gaze_logs:
-            return 0
-
-        with get_session() as db:
-            count = 0
-            for item in gaze_logs:
-                record = GazeRecord(
-                    study_session_id=study_session_id,
-                    survey_id=survey_id,
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    iris_x=self._to_float(item.get("irisX")),
-                    iris_y=self._to_float(item.get("irisY")),
-                    iris_z=self._to_float(item.get("irisZ")),
-                    face_detected=bool(item.get("faceDetected", False)),
-                    gaze_region=str(item.get("gazedRegion") or "") or None,
-                    screen_x=self._to_float(item.get("screenX")),
-                    screen_y=self._to_float(item.get("screenY")),
-                    recorded_at=self._ts_to_datetime(item.get("t")) or utc_now(),
-                )
-                db.add(record)
-                count += 1
-
-            return count
-
-    def archive_payload(
-        self,
-        *,
-        study_session_id: str,
-        payload_type: str,
-        payload: dict[str, Any] | list[Any] | str,
-    ) -> dict[str, Any]:
-        payload_json = payload if isinstance(payload, str) else safe_json_dumps(payload)
-
-        with get_session() as db:
-            archive = GazePayloadArchive(
-                study_session_id=study_session_id,
-                payload_type=str(payload_type or "unknown"),
-                payload_json=payload_json,
-            )
-            db.add(archive)
-            db.flush()
-
-            return {
-                "payload_archive_id": archive.payload_archive_id,
-                "saved_at": archive.saved_at.isoformat() if archive.saved_at else None,
-            }
-
-    def save_full_study_payload(
-        self,
-        *,
-        participant_code: str,
-        survey_id: str | None,
-        invite_code: str | None,
-        payload_type: str,
+        db: Session,
+        session: ParticipantSession,
+        publication: SurveyPublication,
         payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """
-        Convenience method for participant/backend integration:
-        1) ensure participant exists
-        2) create a study_session
-        3) save interaction logs
-        4) save calibration result + samples
-        5) save gaze records
-        6) archive the full raw payload
-        """
-        with get_session() as db:
-            participant = (
-                db.query(Participant)
-                .filter(Participant.participant_code == participant_code)
-                .one_or_none()
-            )
-            if participant is None:
-                participant = Participant(participant_code=participant_code)
-                db.add(participant)
-                db.flush()
+    ) -> None:
+        answer_items = self._extract_answer_items(payload)
+        if not answer_items:
+            return
 
-            study_session = StudySession(
-                participant_id=participant.participant_id,
-                survey_id=survey_id,
-                invite_code=normalize_invite_code(invite_code),
-                session_status="completed" if payload.get("studyEndedAt") else "started",
-                started_at=self._iso_to_datetime(payload.get("startedAt")) or utc_now(),
-                calibration_started_at=self._iso_to_datetime(payload.get("startedAt")),
-                calibration_completed_at=self._iso_to_datetime(payload.get("studyStartedAt")),
-                study_started_at=self._iso_to_datetime(payload.get("studyStartedAt")),
-                study_ended_at=self._iso_to_datetime(payload.get("studyEndedAt")),
-                exported_at=None,
-            )
-            db.add(study_session)
-            db.flush()
+        news_items = {item.sort_order: item for item in publication.survey.news_items}
+        existing = db.query(ParticipantAnswer).filter(ParticipantAnswer.session_id == session.id).all()
+        for row in existing:
+            db.delete(row)
+        db.flush()
 
-            interaction_count = 0
-            for item in payload.get("interactionLogs", []):
-                log = ParticipantInteractionLog(
-                    study_session_id=study_session.study_session_id,
-                    event_type=str(item.get("type") or item.get("event_type") or "unknown"),
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    event_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                    event_payload=safe_json_dumps(item),
+        for answer in answer_items:
+            news_index = answer.get("newsIndex")
+            option_id = answer.get("optionId")
+            option_index = answer.get("optionIndex")
+            news_item = news_items.get(news_index)
+            if news_item is None:
+                continue
+            variant = self._pick_variant_for_publication(news_item, publication.published_version_key)
+            if variant is None:
+                continue
+            option = None
+            if option_id:
+                option = next((item for item in variant.question_options if item.id == option_id), None)
+            if option is None and isinstance(option_index, int):
+                ordered_options = sorted(variant.question_options, key=lambda item: item.sort_order)
+                if 0 <= option_index < len(ordered_options):
+                    option = ordered_options[option_index]
+            if option is None:
+                continue
+
+            db.add(
+                ParticipantAnswer(
+                    session_id=session.id,
+                    news_item_id=news_item.id,
+                    variant_id=variant.id,
+                    option_id=option.id,
+                    answered_at=utc_now(),
                 )
-                db.add(log)
-                interaction_count += 1
-
-            quality_metrics = payload.get("qualityMetrics") or {}
-            calibration_logs = payload.get("calibrationLogs") or []
-
-            calibration_result = CalibrationResult(
-                study_session_id=study_session.study_session_id,
-                overall_score=self._to_float(quality_metrics.get("overall")),
-                score_percent=self._to_int(quality_metrics.get("scorePercent")),
-                passed=bool(quality_metrics.get("pass", False)),
-                quality_threshold=self._to_float(quality_metrics.get("quality_threshold")),
-                total_points=self._infer_total_points(quality_metrics, calibration_logs),
-                raw_quality_metrics=safe_json_dumps(quality_metrics),
             )
-            db.add(calibration_result)
-            db.flush()
+        db.flush()
 
-            calibration_sample_count = 0
-            for item in calibration_logs:
-                target = item.get("target") or {}
-                sample = CalibrationSample(
-                    calibration_result_id=calibration_result.calibration_result_id,
-                    study_session_id=study_session.study_session_id,
-                    target_index=self._to_int(item.get("targetIdx")),
-                    target_x=self._to_float(target.get("x")),
-                    target_y=self._to_float(target.get("y")),
-                    iris_x=self._to_float(item.get("irisX")),
-                    iris_y=self._to_float(item.get("irisY")),
-                    sample_timestamp=self._ts_to_datetime(item.get("t")) or utc_now(),
-                )
-                db.add(sample)
-                calibration_sample_count += 1
-
-            gaze_count = 0
-            for item in payload.get("gazeLogs", []):
-                record = GazeRecord(
-                    study_session_id=study_session.study_session_id,
-                    survey_id=survey_id,
-                    post_id=str(item.get("postId") or item.get("post_id") or "") or None,
-                    view_mode=str(item.get("viewMode") or item.get("view_mode") or "") or None,
-                    iris_x=self._to_float(item.get("irisX")),
-                    iris_y=self._to_float(item.get("irisY")),
-                    iris_z=self._to_float(item.get("irisZ")),
-                    face_detected=bool(item.get("faceDetected", False)),
-                    gaze_region=str(item.get("gazedRegion") or "") or None,
-                    screen_x=self._to_float(item.get("screenX")),
-                    screen_y=self._to_float(item.get("screenY")),
-                    recorded_at=self._ts_to_datetime(item.get("t")) or utc_now(),
-                )
-                db.add(record)
-                gaze_count += 1
-
-            archive = GazePayloadArchive(
-                study_session_id=study_session.study_session_id,
-                payload_type=str(payload_type or "study"),
-                payload_json=safe_json_dumps(payload),
-            )
-            db.add(archive)
-            db.flush()
-
-            return {
-                "participant_id": participant.participant_id,
-                "study_session_id": study_session.study_session_id,
-                "interaction_logs_saved": interaction_count,
-                "calibration_samples_saved": calibration_sample_count,
-                "gaze_records_saved": gaze_count,
-                "payload_archive_id": archive.payload_archive_id,
-            }
-
-    # ------------------------------------------------------------------
-    # Internal serializers
-    # ------------------------------------------------------------------
+    def _extract_answer_items(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        candidate_keys = ["answers", "responses", "questionResponses", "selectedAnswers"]
+        for key in candidate_keys:
+            value = payload.get(key)
+            if isinstance(value, list):
+                normalized: list[dict[str, Any]] = []
+                for item in value:
+                    if not isinstance(item, dict):
+                        continue
+                    news_index = item.get("newsIndex")
+                    try:
+                        news_index = int(news_index)
+                    except (TypeError, ValueError):
+                        continue
+                    option_index = item.get("optionIndex")
+                    try:
+                        option_index = int(option_index) if option_index is not None else None
+                    except (TypeError, ValueError):
+                        option_index = None
+                    normalized.append(
+                        {
+                            "newsIndex": news_index,
+                            "optionId": str(item.get("optionId") or "").strip() or None,
+                            "optionIndex": option_index,
+                        }
+                    )
+                return normalized
+        return []
 
     def _researcher_to_dict(self, obj: Researcher) -> dict[str, Any]:
+        display_name = obj.username.split("@", 1)[0] or obj.username or "Researcher"
         return {
-            "researcher_id": obj.researcher_id,
-            "email": obj.email,
-            "display_name": obj.display_name,
-            "role": obj.role,
-            "account_status": obj.account_status,
+            "researcher_id": obj.id,
+            "email": obj.username,
+            "name": display_name,
+            "initial": (display_name[:1] or "R").upper(),
             "created_at": obj.created_at.isoformat() if obj.created_at else None,
-            "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
-            "last_login_at": obj.last_login_at.isoformat() if obj.last_login_at else None,
         }
 
     def _survey_to_dict(self, obj: Survey) -> dict[str, Any]:
         return {
-            "survey_id": obj.survey_id,
+            "survey_id": obj.id,
             "researcher_id": obj.researcher_id,
-            "survey_title": obj.survey_title,
-            "research_description": obj.research_description,
-            "news_link": obj.news_link,
-            "scraped_title": obj.scraped_title,
-            "scraped_image_url": obj.scraped_image_url,
-            "invite_code": obj.invite_code,
-            "survey_link": obj.survey_link,
+            "survey_title": obj.title,
             "status": obj.status,
-            "is_published": obj.is_published,
             "created_at": obj.created_at.isoformat() if obj.created_at else None,
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
         }
 
-    def _survey_version_to_dict(self, obj: SurveyVersion) -> dict[str, Any]:
+    def _variant_to_legacy_dict(self, obj: SurveyVariant) -> dict[str, Any]:
         return {
-            "survey_version_id": obj.survey_version_id,
-            "survey_id": obj.survey_id,
-            "version_label": obj.version_label,
-            "is_default": obj.is_default,
+            "survey_version_id": obj.id,
+            "survey_id": obj.news_item.survey_id if obj.news_item else None,
+            "version_label": obj.version_key,
             "platform": obj.platform,
             "caption": obj.caption,
             "image_url": obj.image_url,
-            "likes_count": obj.likes_count,
-            "comments_count": obj.comments_count,
-            "shares_count": obj.shares_count,
-            "created_at": obj.created_at.isoformat() if obj.created_at else None,
-            "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
+            "likes_count": 0,
+            "comments_count": 0,
+            "shares_count": 0,
         }
 
-    def _publish_log_to_dict(self, obj: SurveyPublishLog) -> dict[str, Any]:
+    def _publication_to_dict(self, obj: SurveyPublication) -> dict[str, Any]:
         return {
-            "publish_log_id": obj.publish_log_id,
+            "publication_id": obj.id,
             "survey_id": obj.survey_id,
-            "survey_version_id": obj.survey_version_id,
-            "published_by_researcher_id": obj.published_by_researcher_id,
             "invite_code": obj.invite_code,
-            "participant_link": obj.participant_link,
-            "version_label": obj.version_label,
-            "platform": obj.platform,
-            "caption": obj.caption,
-            "image_url": obj.image_url,
-            "likes_count": obj.likes_count,
-            "comments_count": obj.comments_count,
-            "shares_count": obj.shares_count,
+            "published_version_key": obj.published_version_key,
             "published_at": obj.published_at.isoformat() if obj.published_at else None,
         }
 
-    def _publish_log_to_participant_post(self, obj: SurveyPublishLog) -> dict[str, Any]:
-        username = "sydney_news_hub"
+    def _publication_to_legacy_dict(self, obj: SurveyPublication, db: Session) -> dict[str, Any]:
+        survey = obj.survey
+        first_news = None
+        variant = None
+        if survey is not None and survey.news_items:
+            first_news = sorted(survey.news_items, key=lambda item: item.sort_order)[0]
+            variant = self._pick_variant_for_publication(first_news, obj.published_version_key)
         return {
-            "id": obj.publish_log_id,
-            "inviteCode": obj.invite_code,
-            "platform": obj.platform,
-            "caption": obj.caption or "",
-            "image": obj.image_url or "",
-            "likes": obj.likes_count or 0,
-            "comments": obj.comments_count or 0,
-            "shares": obj.shares_count or 0,
-            "version": obj.version_label or "",
-            "username": username,
-            "location": "Sydney, Australia",
-            "time": "Just now",
-            "previewLabel": "" if obj.image_url else "[News Image Preview]",
-            "avatarLetter": (username[:1] or "S").upper(),
-            "commentsList": [
-                "This post was published from the researcher prototype.",
-                f"Platform mapping: {str(obj.platform or 'instagram').lower()}.",
-            ],
-        }
-
-    def _participant_to_dict(self, obj: Participant) -> dict[str, Any]:
-        return {
-            "participant_id": obj.participant_id,
-            "participant_code": obj.participant_code,
-            "created_at": obj.created_at.isoformat() if obj.created_at else None,
-        }
-
-    def _study_session_to_dict(self, obj: StudySession) -> dict[str, Any]:
-        return {
-            "study_session_id": obj.study_session_id,
-            "participant_id": obj.participant_id,
+            "publish_log_id": obj.id,
             "survey_id": obj.survey_id,
             "invite_code": obj.invite_code,
-            "session_status": obj.session_status,
-            "started_at": obj.started_at.isoformat() if obj.started_at else None,
-            "calibration_started_at": obj.calibration_started_at.isoformat() if obj.calibration_started_at else None,
-            "calibration_completed_at": obj.calibration_completed_at.isoformat() if obj.calibration_completed_at else None,
-            "study_started_at": obj.study_started_at.isoformat() if obj.study_started_at else None,
-            "study_ended_at": obj.study_ended_at.isoformat() if obj.study_ended_at else None,
-            "exported_at": obj.exported_at.isoformat() if obj.exported_at else None,
-            "created_at": obj.created_at.isoformat() if obj.created_at else None,
-            "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
+            "version_label": variant.version_key if variant else obj.published_version_key,
+            "platform": variant.platform if variant else "instagram",
+            "caption": variant.caption if variant else None,
+            "image_url": variant.image_url if variant else None,
+            "likes_count": 0,
+            "comments_count": 0,
+            "shares_count": 0,
+            "published_at": obj.published_at.isoformat() if obj.published_at else None,
         }
-
-    # ------------------------------------------------------------------
-    # Conversion helpers
-    # ------------------------------------------------------------------
-
-    def _to_float(self, value: Any) -> float | None:
-        if value is None or value == "":
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _to_int(self, value: Any) -> int | None:
-        if value is None or value == "":
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _ts_to_datetime(self, value: Any) -> datetime | None:
-        if value is None:
-            return None
-        try:
-            return datetime.fromtimestamp(float(value) / 1000, tz=timezone.utc)
-        except (TypeError, ValueError, OSError):
-            return None
-
-    def _iso_to_datetime(self, value: Any) -> datetime | None:
-        text = str(value or "").strip()
-        if not text:
-            return None
-        try:
-            if text.endswith("Z"):
-                text = text[:-1] + "+00:00"
-            dt = datetime.fromisoformat(text)
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=timezone.utc)
-            return dt
-        except ValueError:
-            return None
-
-    def _infer_total_points(
-        self,
-        quality_metrics: dict[str, Any],
-        calibration_logs: list[dict[str, Any]],
-    ) -> int | None:
-        per_point = quality_metrics.get("perPoint")
-        if isinstance(per_point, list):
-            return len(per_point)
-
-        indices = {
-            self._to_int(item.get("targetIdx"))
-            for item in calibration_logs
-            if self._to_int(item.get("targetIdx")) is not None
-        }
-        return len(indices) if indices else None
 
 
 db_bridge = DBBridge(auto_init=False)

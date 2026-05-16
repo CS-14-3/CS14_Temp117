@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from project_database.db import Base
@@ -11,200 +11,109 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class Participant(Base):
-    __tablename__ = "participants"
+class ParticipantSession(Base):
+    __tablename__ = "participant_sessions"
 
-    participant_id: Mapped[str] = mapped_column(
+    id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid4())
     )
-
-    participant_code: Mapped[str] = mapped_column(
-        String(100),
-        unique=True,
-        nullable=False,
-        index=True
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now
-    )
-
-    study_sessions: Mapped[list["StudySession"]] = relationship(
-        "StudySession",
-        back_populates="participant",
-        cascade="all, delete-orphan"
-    )
-
-    def __repr__(self) -> str:
-        return f"<Participant(participant_id={self.participant_id}, participant_code={self.participant_code})>"
-
-
-class StudySession(Base):
-    __tablename__ = "study_sessions"
-
-    study_session_id: Mapped[str] = mapped_column(
+    publication_id: Mapped[str] = mapped_column(
         String(36),
-        primary_key=True,
-        default=lambda: str(uuid4())
-    )
-
-    participant_id: Mapped[str] = mapped_column(
-        String(36),
-        ForeignKey("participants.participant_id", ondelete="CASCADE"),
+        ForeignKey("survey_publications.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-
-    survey_id: Mapped[str | None] = mapped_column(
-        String(36),
-        ForeignKey("surveys.survey_id", ondelete="SET NULL"),
-        nullable=True,
-        index=True
-    )
-
-    invite_code: Mapped[str | None] = mapped_column(
-        String(20),
-        nullable=True,
-        index=True
-    )
-
-    session_status: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        default="started"
-    )
-
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
-    calibration_started_at: Mapped[datetime | None] = mapped_column(
+    closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
     )
-    calibration_completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    study_started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    study_ended_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-    exported_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+    status: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
-        default=utc_now
+        default="started"
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=utc_now,
-        onupdate=utc_now
+    gaze_data_json: Mapped[dict | list | None] = mapped_column(
+        JSON,
+        nullable=True
     )
 
-    participant: Mapped["Participant"] = relationship(
-        "Participant",
-        back_populates="study_sessions"
+    publication: Mapped["SurveyPublication"] = relationship(
+        "SurveyPublication",
+        back_populates="participant_sessions"
     )
-
-    survey = relationship("Survey")
-
-    interaction_logs: Mapped[list["ParticipantInteractionLog"]] = relationship(
-        "ParticipantInteractionLog",
-        back_populates="study_session",
-        cascade="all, delete-orphan"
-    )
-
-    calibration_results: Mapped[list["CalibrationResult"]] = relationship(
-        "CalibrationResult",
-        back_populates="study_session",
-        cascade="all, delete-orphan"
-    )
-
-    gaze_records: Mapped[list["GazeRecord"]] = relationship(
-        "GazeRecord",
-        back_populates="study_session",
-        cascade="all, delete-orphan"
-    )
-
-    gaze_payload_archives: Mapped[list["GazePayloadArchive"]] = relationship(
-        "GazePayloadArchive",
-        back_populates="study_session",
+    answers: Mapped[list["ParticipantAnswer"]] = relationship(
+        "ParticipantAnswer",
+        back_populates="session",
         cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<StudySession(study_session_id={self.study_session_id}, "
-            f"participant_id={self.participant_id}, survey_id={self.survey_id})>"
-        )
+        return f"<ParticipantSession(id={self.id}, publication_id={self.publication_id}, status={self.status})>"
 
 
-class ParticipantInteractionLog(Base):
-    __tablename__ = "participant_interaction_logs"
+class ParticipantAnswer(Base):
+    __tablename__ = "participant_answers"
 
-    interaction_log_id: Mapped[str] = mapped_column(
+    id: Mapped[str] = mapped_column(
         String(36),
         primary_key=True,
         default=lambda: str(uuid4())
     )
-
-    study_session_id: Mapped[str] = mapped_column(
+    session_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("study_sessions.study_session_id", ondelete="CASCADE"),
+        ForeignKey("participant_sessions.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-
-    event_type: Mapped[str] = mapped_column(
-        String(100),
+    news_item_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("survey_news_items.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
-
-    post_id: Mapped[str | None] = mapped_column(
-        String(50),
-        nullable=True,
+    variant_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("survey_variants.id", ondelete="CASCADE"),
+        nullable=False,
         index=True
     )
-
-    view_mode: Mapped[str | None] = mapped_column(
-        String(50),
-        nullable=True
+    option_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("survey_question_options.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
     )
-
-    event_timestamp: Mapped[datetime] = mapped_column(
+    answered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=utc_now,
-        index=True
+        default=utc_now
     )
 
-    event_payload: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True
+    session: Mapped["ParticipantSession"] = relationship(
+        "ParticipantSession",
+        back_populates="answers"
     )
-
-    study_session: Mapped["StudySession"] = relationship(
-        "StudySession",
-        back_populates="interaction_logs"
+    news_item: Mapped["SurveyNewsItem"] = relationship(
+        "SurveyNewsItem",
+        back_populates="participant_answers"
+    )
+    variant: Mapped["SurveyVariant"] = relationship(
+        "SurveyVariant",
+        back_populates="participant_answers"
+    )
+    option: Mapped["SurveyQuestionOption"] = relationship(
+        "SurveyQuestionOption",
+        back_populates="participant_answers"
     )
 
     def __repr__(self) -> str:
         return (
-            f"<ParticipantInteractionLog(interaction_log_id={self.interaction_log_id}, "
-            f"event_type={self.event_type}, post_id={self.post_id})>"
+            f"<ParticipantAnswer(id={self.id}, session_id={self.session_id}, "
+            f"variant_id={self.variant_id}, option_id={self.option_id})>"
         )

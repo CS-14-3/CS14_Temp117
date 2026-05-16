@@ -148,96 +148,36 @@ class PrototypeStore:
         }
 
     def publish_post(self, payload: dict[str, Any], session: dict[str, str]) -> dict[str, Any]:
-        invite_code = normalize_invite_code(payload.get("inviteCode"))
-        
-        # 适配新版前端的 snapshot 结构
-        news_items = payload.get('news', [])
-        version_label = str(payload.get('publishedVersionKey') or payload.get("version") or "vA").strip()
-        
-        if news_items:
-            # 提取第一个新闻项以映射到现有的 SQL 数据库结构
-            first_news = news_items[0]
-            news_link = first_news.get('link')
-            version_label = str(
-                first_news.get("publishedVersionKey")
-                or payload.get("publishedVersionKey")
-                or payload.get("version")
-                or version_label
-            ).strip()
-            variant = extract_published_variant(first_news, version_label)
-            platform = normalize_platform(variant.get('platform', 'instagram'))
-            caption = str(variant.get('caption') or "").strip()
-            image = str(variant.get('image') or "").strip()
-            likes = parse_int(variant.get('likes'), 0)
-            comments = parse_int(variant.get('comments'), 0)
-            shares = parse_int(variant.get('shares'), 0)
-        else:
-            # 回退到旧结构或空数据处理
-            platform = normalize_platform(payload.get("platform"))
-            caption = str(payload.get("caption") or "").strip()
-            image = str(payload.get("image") or "").strip()
-            likes = parse_int(payload.get("likes"), 0)
-            comments = parse_int(payload.get("comments"), 0)
-            shares = parse_int(payload.get("shares"), 0)
-            news_link = None
-
-        if not caption:
-            raise ValueError("Caption is required before publishing.")
-
-        researcher = self.db.get_researcher_by_email(session.get("email", ""))
-        if researcher is None:
-            raise ValueError("Researcher account not found.")
-
-        survey = self.db.create_survey(
-            researcher_id=researcher["researcher_id"],
-            news_link=news_link,
-            scraped_title=caption,
-            scraped_image_url=image,
+        publish_result = self.db.publish_survey_snapshot(
+            researcher_email=session.get("email", ""),
+            snapshot=payload,
         )
 
-        version = self.db.upsert_survey_version(
-            survey_id=survey["survey_id"],
-            version_label=version_label,
-            platform=platform,
-            caption=caption,
-            image_url=image,
-            likes_count=likes,
-            comments_count=comments,
-            shares_count=shares,
-            is_default=True,
-        )
-
-        publish_result = self.db.publish_survey_version(
-            survey_id=survey["survey_id"],
-            version_label=version["version_label"],
-            published_by_researcher_id=researcher["researcher_id"],
-            invite_code=invite_code,
-            participant_link=None,
-        )
-
-        publish_log = publish_result["publish_log"]
+        publication = publish_result["publication"]
+        posts = publish_result.get("posts") or []
+        lead_post = posts[0] if posts else {}
 
         return {
-            "id": publish_log["publish_log_id"],
-            "inviteCode": publish_log["invite_code"],
-            "platform": publish_log["platform"],
-            "caption": publish_log["caption"] or "",
-            "image": publish_log["image_url"] or "",
-            "likes": publish_log["likes_count"] or 0,
-            "comments": publish_log["comments_count"] or 0,
-            "shares": publish_log["shares_count"] or 0,
-            "version": publish_log["version_label"] or "",
-            "username": "sydney_news_hub",
-            "location": "Sydney, Australia",
-            "time": "Just now",
-            "previewLabel": "" if publish_log["image_url"] else "[News Image Preview]",
+            "id": publication["publication_id"],
+            "inviteCode": publication["invite_code"],
+            "platform": lead_post.get("platform", "instagram"),
+            "caption": lead_post.get("caption", ""),
+            "image": lead_post.get("image", ""),
+            "likes": 0,
+            "comments": 0,
+            "shares": 0,
+            "version": lead_post.get("versionKey") or publication.get("published_version_key") or "",
+            "username": lead_post.get("username") or "sydney_news_hub",
+            "location": lead_post.get("location") or "",
+            "time": lead_post.get("time") or "Just now",
+            "previewLabel": "" if lead_post.get("image") else "[News Image Preview]",
             "avatarLetter": "S",
             "commentsList": [
                 "This post was published from the researcher prototype.",
-                f"Platform mapping: {publish_log['platform']}.",
+                f"Platform mapping: {lead_post.get('platform', 'instagram')}.",
             ],
             "publishedBy": session.get("email", ""),
-            "createdAt": publish_log["published_at"],
+            "createdAt": publication["published_at"],
             "surveyId": publish_result["survey"]["survey_id"],
         }
 
