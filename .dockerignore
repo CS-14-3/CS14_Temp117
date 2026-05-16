@@ -1,0 +1,14 @@
+.git
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+**/.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+CS14_Temp117-Backend/.runtime_cache/
+CS14_Temp117-Backend/data/
+logs/
+*.log
+*.zip
