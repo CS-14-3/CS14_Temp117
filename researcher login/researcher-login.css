@@ -136,11 +136,16 @@ body {
   border: 0;
   background: transparent;
   padding: 0;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  margin-right: -0.75rem;
+  border-radius: 0.75rem;
   color: #6b7280;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   transition: color 0.2s ease;
 }
 
@@ -152,6 +157,10 @@ body {
   width: 1rem;
   height: 1rem;
   display: inline-flex;
+}
+
+.toggle-icon[hidden] {
+  display: none !important;
 }
 
 .meta-row {

@@ -50,10 +50,6 @@ const UI_TEXT = {
   'question.addOption': 'Add option',
   'question.required': 'Required answer',
   'question.requiredShort': 'Required',
-  'translation.languages': 'Content Languages',
-  'translation.generate': 'Generate Translations',
-  'translation.source': 'Source Language',
-  'translation.targets': 'Target Languages',
   'invite.accessControl': 'Participant Access Control',
   'invite.description': 'Generate a unique invite code to ensure anonymity',
   'invite.generate': 'Generate Invite Code',
@@ -623,12 +619,6 @@ const surveyState = {
 const APP_STATE_STORAGE_KEY = 'surveyArchitectAppState';
 const GAZE_DATA_STORAGE_KEY = 'surveyArchitectParticipantGazeData';
 const GAZE_DATA_API_URL = 'http://localhost:5001/api/gaze-data';
-const CONTENT_LOCALE_LABELS = {
-  en: 'English',
-  zh: 'Chinese',
-  ar: 'Arabic',
-  es: 'Spanish'
-};
 
 const appState = {
   currentSurveyId: null,
@@ -650,10 +640,6 @@ function createNewSurvey(title) {
     publishedAt: null,
     completedAt: null,
     news: [createDefaultNews('instagram')],
-    translationConfig: {
-      sourceLocale: 'en',
-      targetLocales: []
-    },
     translations: {},
     participantResults: [],
     exportReady: false,
@@ -906,7 +892,6 @@ function normalizePublishedSnapshot(snapshot) {
   return {
     ...snapshot,
     publishedVersionKey,
-    translationConfig: normalizeTranslationConfig(snapshot.translationConfig),
     translations: snapshot.translations && typeof snapshot.translations === 'object'
       ? snapshot.translations
       : {},
@@ -927,10 +912,6 @@ function createPublishedSnapshot(survey, selectedVersionKey = 'vA') {
     completedAt: survey.completedAt,
     publishedVersionKey: selectedVersionKey,
     news: (survey.news || []).map((news) => getPublishedNewsSnapshot(news, selectedVersionKey)),
-    translationConfig: clonePlainData(survey.translationConfig || {
-      sourceLocale: 'en',
-      targetLocales: []
-    }),
     translations: clonePlainData(survey.translations || {}),
     participantResults: [],
     exportReady: false
@@ -1061,23 +1042,6 @@ function createPublishedPostsFromSnapshot(snapshot) {
   return posts.filter(Boolean);
 }
 
-function normalizeTranslationConfig(config) {
-  const source = config && typeof config === 'object' ? config : {};
-  const sourceLocale = CONTENT_LOCALE_LABELS[source.sourceLocale] ? source.sourceLocale : 'en';
-  const targetLocales = Array.isArray(source.targetLocales)
-    ? source.targetLocales.filter((locale, index, locales) => (
-      CONTENT_LOCALE_LABELS[locale] &&
-      locale !== sourceLocale &&
-      locales.indexOf(locale) === index
-    ))
-    : [];
-
-  return {
-    sourceLocale,
-    targetLocales
-  };
-}
-
 function getHistorySurveyRecord(survey) {
   const publishedPosts = Array.isArray(survey.publishedPosts)
     ? survey.publishedPosts.map(normalizePublishedPost).filter(Boolean)
@@ -1138,7 +1102,7 @@ function normalizeSurvey(survey) {
   normalized.news = Array.isArray(normalized.news) && normalized.news.length
     ? normalized.news.map(normalizeNewsItem)
     : [createDefaultNews('instagram')];
-  normalized.translationConfig = normalizeTranslationConfig(normalized.translationConfig);
+  delete normalized.translationConfig;
   normalized.translations = normalized.translations && typeof normalized.translations === 'object'
     ? normalized.translations
     : {};
@@ -2982,10 +2946,6 @@ const inputQuestionText = document.getElementById('input-question-text');
 const questionOptionsList = document.getElementById('question-options-list');
 const btnAddQuestionOption = document.getElementById('btn-add-question-option');
 const inputQuestionRequired = document.getElementById('input-question-required');
-const inputSourceLocale = document.getElementById('input-source-locale');
-const targetLocaleInputs = document.querySelectorAll('[data-target-locale]');
-const btnGenerateTranslations = document.getElementById('btn-generate-translations');
-const translationStatusList = document.getElementById('translation-status-list');
 
 const imageUploadInput = document.getElementById('image-upload-input');
 const avatarUploadInput = document.getElementById('avatar-upload-input');
@@ -3029,7 +2989,6 @@ function isNoSurveyEditorTarget(target) {
     '.version-tab',
     '#input-platform',
     '#question-block-editor',
-    '#translation-editor',
     '#btn-generate-code',
     '#btn-publish-survey',
     '#preview-container',
@@ -3779,56 +3738,6 @@ function updateQuestionBlock(updater, shouldRenderEditor = false) {
   saveAppStateToLocalStorage();
 }
 
-function getCurrentTranslationConfig() {
-  const currentSurvey = getCurrentSurvey();
-  if (!currentSurvey) return null;
-
-  currentSurvey.translationConfig = normalizeTranslationConfig(currentSurvey.translationConfig);
-  currentSurvey.translations = currentSurvey.translations && typeof currentSurvey.translations === 'object'
-    ? currentSurvey.translations
-    : {};
-  return currentSurvey.translationConfig;
-}
-
-function renderTranslationStatus() {
-  const currentSurvey = getCurrentSurvey();
-  const config = getCurrentTranslationConfig();
-  if (!translationStatusList || !currentSurvey || !config) return;
-
-  if (config.targetLocales.length === 0) {
-    translationStatusList.innerHTML = '<p class="text-xs text-gray-500">Select at least one target language before generating translations.</p>';
-    return;
-  }
-
-  translationStatusList.innerHTML = config.targetLocales.map((locale) => {
-    const translation = currentSurvey.translations[locale];
-    const isReady = translation && translation.status === 'ready';
-    const label = CONTENT_LOCALE_LABELS[locale] || locale;
-    return `
-      <div class="flex items-center justify-between gap-3 rounded-md bg-gray-50 border border-gray-100 px-3 py-2">
-        <span class="text-xs font-bold text-gray-700">${escapeHtml(label)}</span>
-        <span class="text-xs font-bold uppercase ${isReady ? 'text-emerald-600' : 'text-gray-400'}">${isReady ? 'Ready' : 'Not generated'}</span>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderTranslationEditor() {
-  const config = getCurrentTranslationConfig();
-  if (!config) return;
-
-  if (inputSourceLocale) {
-    inputSourceLocale.value = config.sourceLocale;
-  }
-
-  targetLocaleInputs.forEach((input) => {
-    input.checked = config.targetLocales.includes(input.value);
-    input.disabled = input.value === config.sourceLocale;
-  });
-
-  renderTranslationStatus();
-}
-
 function setDisabledState(element, disabled) {
   if (!element) return;
 
@@ -3871,28 +3780,15 @@ function updateEditorSurveyAvailability() {
     inputQuestionText,
     btnAddQuestionOption,
     inputQuestionRequired,
-    inputSourceLocale,
-    btnGenerateTranslations,
     btnGenerateCode,
     document.getElementById('btn-publish-survey')
   ].forEach((element) => setDisabledState(element, !hasSurvey));
 
   tabs.forEach((tab) => setDisabledState(tab, !hasSurvey));
 
-  document.querySelectorAll('#news-tabs-container button, #question-options-list input, #question-options-list button, [data-target-locale]').forEach((element) => {
+  document.querySelectorAll('#news-tabs-container button, #question-options-list input, #question-options-list button').forEach((element) => {
     setDisabledState(element, !hasSurvey);
   });
-}
-
-function updateTranslationConfig(updater) {
-  const currentSurvey = getCurrentSurvey();
-  const config = getCurrentTranslationConfig();
-  if (!currentSurvey || !config) return;
-
-  updater(config);
-  currentSurvey.translationConfig = normalizeTranslationConfig(config);
-  renderTranslationEditor();
-  saveAppStateToLocalStorage();
 }
 
 function collectSurveyTranslationEntries(survey) {
@@ -3952,56 +3848,6 @@ function collectSurveyTranslationEntries(survey) {
   return entries.filter((entry) => entry.text.trim());
 }
 
-async function handleGenerateTranslationsClick() {
-  const currentSurvey = getCurrentSurvey();
-  const config = getCurrentTranslationConfig();
-  if (!currentSurvey || !config) return;
-
-  if (config.targetLocales.length === 0) {
-    alert('Please select at least one target language.');
-    return;
-  }
-
-  const originalText = btnGenerateTranslations ? btnGenerateTranslations.textContent : '';
-  if (btnGenerateTranslations) {
-    btnGenerateTranslations.disabled = true;
-    btnGenerateTranslations.textContent = 'Generating...';
-  }
-
-  try {
-    const response = await fetch(TRANSLATION_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        surveyId: currentSurvey.id,
-        sourceLocale: config.sourceLocale,
-        targetLocales: config.targetLocales,
-        entries: collectSurveyTranslationEntries(currentSurvey)
-      })
-    });
-    const result = await response.json();
-
-    if (!response.ok || !result.success) {
-      alert(result.error || 'Translation generation is not available yet.');
-      return;
-    }
-
-    currentSurvey.translations = result.translations && typeof result.translations === 'object'
-      ? result.translations
-      : {};
-    saveAppStateToLocalStorage();
-    renderTranslationStatus();
-  } catch (error) {
-    console.error('Failed to generate translations:', error);
-    alert('Translation service is unavailable. Please check the backend service.');
-  } finally {
-    if (btnGenerateTranslations) {
-      btnGenerateTranslations.disabled = false;
-      btnGenerateTranslations.textContent = originalText;
-    }
-  }
-}
-
 function renderEditor() {
   if (!getCurrentSurvey()) {
     inputNewsLink.value = '';
@@ -4018,7 +3864,6 @@ function renderEditor() {
   inputNewsLink.value = currentNews.link || '';
   inputPlatform.value = currentData.platform;
   renderQuestionBlockEditor();
-  renderTranslationEditor();
   renderInviteCode();
 }
 
@@ -4266,29 +4111,6 @@ if (questionOptionsList) {
       }
     }, true);
   });
-}
-
-if (inputSourceLocale) {
-  inputSourceLocale.addEventListener('change', (e) => {
-    updateTranslationConfig((config) => {
-      config.sourceLocale = e.target.value;
-      config.targetLocales = config.targetLocales.filter((locale) => locale !== e.target.value);
-    });
-  });
-}
-
-targetLocaleInputs.forEach((input) => {
-  input.addEventListener('change', () => {
-    updateTranslationConfig((config) => {
-      config.targetLocales = Array.from(targetLocaleInputs)
-        .filter((localeInput) => localeInput.checked && localeInput.value !== config.sourceLocale)
-        .map((localeInput) => localeInput.value);
-    });
-  });
-});
-
-if (btnGenerateTranslations) {
-  btnGenerateTranslations.addEventListener('click', handleGenerateTranslationsClick);
 }
 
 // 监听选项卡切换
