@@ -175,72 +175,149 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
 /* ════════════════════════════════════════════════
    STEP 3 — MAIN STUDY PAGE
 ════════════════════════════════════════════════ */
-/* ===== Multi-post participant feed ===== */
+/* ===== Single-post participant carousel ===== */
 .participant-feed-stage {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 70px;
+}
+
+.participant-feed {
+  width: min(100%, 1040px);
+  display: grid;
+  grid-template-columns: 120px minmax(320px, 560px) 120px;
+  column-gap: 56px;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0 60px;
+}
+
+.participant-carousel-slot {
+  width: 120px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.participant-carousel-slot.empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.participant-carousel-post {
   width: 100%;
   display: flex;
   justify-content: center;
 }
 
-.participant-feed {
-  width: min(100%, 1120px);
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-  padding: 8px 0 60px;
-  align-items: start;
-}
-
-.participant-feed .post-feed-item {
+.participant-carousel-post .post-feed-item {
   width: 100%;
   display: block;
-  margin-bottom: 0;
 }
 
-/* Force all platform cards to use the same outer width */
-.participant-feed .prototype2-card,
-.participant-feed .prototype2-instagram,
-.participant-feed .prototype2-facebook,
-.participant-feed .prototype2-x,
-.participant-feed .prototype2-tiktok {
+/* Keep each platform card's own UI, but centre it in the single-post stage */
+.participant-carousel-post .prototype2-card,
+.participant-carousel-post .prototype2-instagram,
+.participant-carousel-post .prototype2-facebook,
+.participant-carousel-post .prototype2-x,
+.participant-carousel-post .prototype2-tiktok {
   width: 100% !important;
-  max-width: 520px !important;
+  max-width: 560px !important;
   margin: 0 auto !important;
 }
 
 /* Keep original platform ratios */
-.participant-feed .prototype2-instagram .prototype2-media.square {
+.participant-carousel-post .prototype2-instagram .prototype2-media.square {
   aspect-ratio: 1 / 1 !important;
 }
 
-.participant-feed .prototype2-facebook .prototype2-media,
-.participant-feed .prototype2-x .prototype2-media {
+.participant-carousel-post .prototype2-facebook .prototype2-media,
+.participant-carousel-post .prototype2-x .prototype2-media {
   aspect-ratio: 16 / 9 !important;
 }
 
-.participant-feed .prototype2-tiktok {
+.participant-carousel-post .prototype2-tiktok {
   aspect-ratio: 9 / 16 !important;
   height: auto !important;
   min-height: 580px;
   max-height: none !important;
 }
 
-/* Main page becomes scrollable feed */
+.participant-carousel-btn {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: .16s ease;
+}
+
+.participant-carousel-btn:hover {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+}
+
+.participant-carousel-finish {
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: #111827;
+  border: 1px solid #111827;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+  white-space: nowrap;
+  transition: .16s ease;
+}
+
+.participant-carousel-finish:hover {
+  background: #000;
+  transform: translateY(-1px);
+}
+
+/* Main page still allows vertical scroll if a platform card is tall */
 #mainPage {
   overflow-y: auto !important;
 }
 
 #mainPage .main-content {
-  width: min(100%, 1180px) !important;
-  max-width: 1180px !important;
+  width: min(100%, 1120px) !important;
+  max-width: 1120px !important;
   min-height: auto !important;
   display: block !important;
 }
 
 @media (max-width: 900px) {
   .participant-feed {
-    width: min(100%, 520px);
-    grid-template-columns: 1fr;
+    width: min(100%, 620px);
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+    column-gap: 12px;
+  }
+
+  .participant-carousel-slot {
+    width: 56px;
+  }
+
+  .participant-carousel-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 26px;
+  }
+
+  .participant-carousel-finish {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 12px;
   }
 
   #mainPage .main-content {
@@ -1716,35 +1793,40 @@ function renderFeed() {
     return;
   }
 
-  participantFeed.innerHTML = postData.map(function (post, index) {
-    post.__postIndex = index;
-    return '<div class="post-feed-item" data-post-index="' + index + '">' + mkPost(index) + '</div>';
-  }).join('');
+  if (currentPostId < 0) currentPostId = 0;
+  if (currentPostId >= postData.length) currentPostId = postData.length - 1;
 
-  currentPostId = 0;
+  var isFirst = currentPostId === 0;
+  var isLast = currentPostId === postData.length - 1;
+
+  var leftControl = isFirst
+    ? '<div class="participant-carousel-slot empty"></div>'
+    : '<div class="participant-carousel-slot">' +
+        '<button class="participant-carousel-btn participant-carousel-prev" type="button" aria-label="Previous post">‹</button>' +
+      '</div>';
+
+  var rightControl = isLast
+    ? '<div class="participant-carousel-slot empty"></div>'
+    : '<div class="participant-carousel-slot">' +
+        '<button class="participant-carousel-btn participant-carousel-next" type="button" aria-label="Next post">›</button>' +
+      '</div>';
+
+  postData[currentPostId].__postIndex = currentPostId;
+
+  participantFeed.innerHTML =
+    leftControl +
+    '<div class="participant-carousel-post">' +
+      '<div class="post-feed-item" data-post-index="' + currentPostId + '">' +
+        mkPost(currentPostId) +
+      '</div>' +
+    '</div>' +
+    rightControl;
 
   if (window.lucide && typeof window.lucide.createIcons === 'function') {
     window.lucide.createIcons();
   }
 
-  // track which post occupies most of the viewport
-  if (_postVisibilityObserver) _postVisibilityObserver.disconnect();
-  var _ratio = {};
-  _postVisibilityObserver = new IntersectionObserver(function(entries) {
-    entries.forEach(function(e) {
-      var idx = Number(e.target.dataset.postIndex || 0);
-      _ratio[idx] = e.intersectionRatio;
-    });
-    var best = 0, bestRatio = -1;
-    Object.keys(_ratio).forEach(function(k) {
-      if (_ratio[k] > bestRatio) { bestRatio = _ratio[k]; best = Number(k); }
-    });
-    if (bestRatio > 0) currentPostId = best;
-  }, {threshold: [0, 0.1, 0.25, 0.5, 0.75, 1.0]});
-
-  participantFeed.querySelectorAll('.post-feed-item').forEach(function(el) {
-    _postVisibilityObserver.observe(el);
-  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function setCurrentPostFromElement(el) {
@@ -1855,19 +1937,42 @@ function doFeedLike(btn) {
   });
 }
 function doDetailLike(){
-  var dlb=document.querySelector('.detail-like-btn'),slb=document.querySelector('#singlePostContainer .like-btn');
-  if(!dlb||!slb)return;
-  var next=dlb.dataset.liked!=='true';
-  dlb.dataset.liked=slb.dataset.liked=next?'true':'false';
-  dlb.classList.toggle('liked',next);slb.classList.toggle('liked',next);
-  postData[currentPostId].likes+=next?1:-1;
-  var l1=document.querySelector('#singlePostContainer .action-inline-count.like-count');
-  var l2=document.querySelector('#singlePostContainer .like-count-text');
-  if(l1)l1.textContent=fc(postData[currentPostId].likes);if(l2)l2.textContent=fc(postData[currentPostId].likes);
-  document.getElementById('detailLikeCount').textContent=document.getElementById('detailLikeCountText').textContent=fc(postData[currentPostId].likes);
-  animCount(document.querySelector('#singlePostContainer .count-float'),next);
-  var dfe=dlb.closest('.action-with-count');if(dfe)animCount(dfe.querySelector('.count-float'),next);
-  studyData.interactionLogs.push({t:Date.now(),type:next?'like':'unlike',postId:currentPostId,source:'detail'});
+  var dlb = document.querySelector('.detail-like-btn');
+  var slb = document.querySelector('.participant-carousel-post .like-btn');
+
+  if (!dlb || !slb) return;
+
+  var next = dlb.dataset.liked !== 'true';
+
+  dlb.dataset.liked = next ? 'true' : 'false';
+  slb.dataset.liked = next ? 'true' : 'false';
+
+  dlb.classList.toggle('liked', next);
+  slb.classList.toggle('liked', next);
+
+  postData[currentPostId].likes += next ? 1 : -1;
+
+  var l1 = document.querySelector('.participant-carousel-post .action-inline-count.like-count');
+  var l2 = document.querySelector('.participant-carousel-post .like-count-text');
+
+  if (l1) l1.textContent = fc(postData[currentPostId].likes);
+  if (l2) l2.textContent = fc(postData[currentPostId].likes);
+
+  document.getElementById('detailLikeCount').textContent = fc(postData[currentPostId].likes);
+  document.getElementById('detailLikeCountText').textContent = fc(postData[currentPostId].likes);
+
+  animCount(document.querySelector('.participant-carousel-post .count-float'), next);
+
+  var dfe = dlb.closest('.action-with-count');
+  if (dfe) animCount(dfe.querySelector('.count-float'), next);
+
+  studyData.interactionLogs.push({
+    t: Date.now(),
+    type: next ? 'like' : 'unlike',
+    postId: postData[currentPostId]?.id || currentPostId,
+    platform: postData[currentPostId]?.platform || '',
+    source: 'detail'
+  });
 }
 
 /* ══════════════════════════════════════════════════
@@ -1889,7 +1994,8 @@ function exportJSON(){
 }
 var exportBtn=document.getElementById('btn-export');
 if(exportBtn) exportBtn.addEventListener('click',exportJSON);
-document.getElementById('btn-finish-study').addEventListener('click',finishStudy);
+var finishBtn = document.getElementById('btn-finish-study');
+if (finishBtn) finishBtn.addEventListener('click', finishStudy);
 
 document.getElementById('verifyInviteBtn').addEventListener('click',function(){
   if(!document.getElementById('inviteInput').value.trim()){alert('Please enter an invitation code.');return;}
@@ -1903,6 +2009,42 @@ document.getElementById('inviteInput').addEventListener('keydown',function(e){if
    EVENT DELEGATION — STUDY PAGE
 ══════════════════════════════════════════════════ */
 participantFeed.addEventListener('click', function(e) {
+  var prevBtn = e.target.closest('.participant-carousel-prev');
+  if (prevBtn) {
+    if (currentPostId > 0) {
+      currentPostId -= 1;
+
+      studyData.interactionLogs.push({
+        t: Date.now(),
+        type: 'navigate_previous_post',
+        postId: postData[currentPostId]?.id || currentPostId,
+        platform: postData[currentPostId]?.platform || '',
+        source: 'carousel'
+      });
+
+      renderFeed();
+    }
+    return;
+  }
+
+  var nextBtn = e.target.closest('.participant-carousel-next');
+  if (nextBtn) {
+    if (currentPostId < postData.length - 1) {
+      currentPostId += 1;
+
+      studyData.interactionLogs.push({
+        t: Date.now(),
+        type: 'navigate_next_post',
+        postId: postData[currentPostId]?.id || currentPostId,
+        platform: postData[currentPostId]?.platform || '',
+        source: 'carousel'
+      });
+
+      renderFeed();
+    }
+    return;
+  }
+
   var action = e.target.closest('.dynamic-action');
   if (action) {
     setCurrentPostFromElement(action);
@@ -1928,6 +2070,7 @@ participantFeed.addEventListener('click', function(e) {
     openDetail(Number(open.dataset.post));
   }
 });
+
 document.addEventListener('click',function(e){
   if(e.target.closest('.close-post-modal')){closeDetail();return;}
   if(e.target.closest('.detail-like-btn')){doDetailLike();}
