@@ -19,7 +19,6 @@ const UI_TEXT = {
   'nav.newSurvey': 'New Survey',
   'nav.history': 'History',
   'nav.results': 'Results',
-  'nav.dataExport': 'Data Export',
   'editor.title': 'Edit Your Survey Post',
   'editor.subtitle': 'Create experiment content by entering a news link and adjusting social variables.',
   'editor.createNewSurvey': 'Create New Survey',
@@ -116,23 +115,10 @@ const UI_TEXT = {
   'history.imageHidden': 'Image hidden',
   'history.noImage': 'No image',
   'export.title': 'Data Export',
-  'export.emptySubtitle': 'Export gaze data received after participants close their survey page.',
-  'export.subtitle': 'Export camera gaze data received from completed participant sessions.',
-  'export.button': 'Export Data',
-  'export.refresh': 'Refresh',
-  'export.gazeEndpoint': 'Gaze Data Endpoint',
-  'export.noGaze': 'No gaze data received yet.',
-  'export.gazeSubmit': 'Participant pages can submit data to {{endpoint}} when they close.',
-  'export.gazeSubmitComplete': 'Participant pages submit completed gaze records to {{endpoint}}.',
   'export.inviteCode': 'Invite Code',
   'export.noInviteCode': 'No invite code',
   'export.close': 'Close',
-  'export.exportJson': 'Export JSON',
   'export.exportCsv': 'Export CSV',
-  'export.completed': 'Completed {{date}}',
-  'export.gazeSamples': 'Gaze samples',
-  'export.newsItems': 'News items',
-  'export.samplesClosed': '{{samples}} samples · closed {{date}}',
   'status.draft': 'Draft',
   'status.published': 'Published',
   'status.completed': 'Completed',
@@ -381,15 +367,11 @@ function rerenderCurrentLanguageView() {
 
   const profileView = document.getElementById('profile-view');
   const historyView = document.getElementById('history-view');
-  const dataExportView = document.getElementById('data-export-view');
   if (profileView && !profileView.classList.contains('hidden')) {
     renderProfileView();
   }
   if (historyView && !historyView.classList.contains('hidden')) {
     renderHistoryView();
-  }
-  if (dataExportView && !dataExportView.classList.contains('hidden')) {
-    renderDataExportView();
   }
   updateLanguageMenuState();
   lucide.createIcons();
@@ -1015,26 +997,6 @@ function normalizePublishedPost(post) {
   };
 }
 
-function createPublishedPost(survey, newsIndex, versionKey, publishedAt) {
-  const news = survey.news[newsIndex];
-  const version = news?.versions?.[versionKey];
-  const publishedVersion = getPublishedVersionSnapshot(version);
-  const platform = publishedVersion.platform || 'instagram';
-  const variant = clonePlainData(publishedVersion.platformVariants?.[platform] || publishedVersion);
-  variant.platform = platform;
-
-  return {
-    id: `published_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-    surveyId: survey.id,
-    newsIndex,
-    newsLink: news?.link || '',
-    versionKey,
-    platform,
-    publishedAt,
-    variant
-  };
-}
-
 function createHistoryRecordFromPublishedPosts(survey, publishedPosts) {
   const newsRecords = [];
 
@@ -1419,7 +1381,6 @@ function storeParticipantGazeResult(payload, options = {}) {
   targetSurvey.completedAt = result.closedAt || result.receivedAt;
   targetSurvey.exportReady = true;
   saveAppStateToLocalStorage();
-  renderDataExportView();
   return true;
 }
 
@@ -1471,10 +1432,7 @@ async function syncGazeDataFromServer(options = {}) {
       payload = payload.concat(results);
     }
 
-    const storedCount = storeParticipantGazeResults(payload, options);
-    if (storedCount > 0) {
-      renderDataExportView();
-    }
+    storeParticipantGazeResults(payload, options);
   } catch (error) {
     if (!hasWarnedGazeDataSyncFailure) {
       console.warn('Unable to sync gaze data from server:', error);
@@ -1700,13 +1658,6 @@ function bindPublishSurveyButton() {
   publishButton.addEventListener('click', handlePublishSurveyClick);
 }
 
-function ensureDataExportNavigation() {
-  const exportNavItem = getNavItemByKey('dataExport');
-  if (exportNavItem) {
-    exportNavItem.remove();
-  }
-}
-
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1788,25 +1739,6 @@ function ensureHistoryView() {
   historyView.addEventListener('click', handleHistoryClick);
   mainWorkspace.appendChild(historyView);
   return historyView;
-}
-
-function ensureDataExportView() {
-  let dataExportView = document.getElementById('data-export-view');
-  if (dataExportView) {
-    return dataExportView;
-  }
-
-  const mainWorkspace = getMainWorkspace();
-  if (!mainWorkspace) {
-    return null;
-  }
-
-  dataExportView = document.createElement('section');
-  dataExportView.id = 'data-export-view';
-  dataExportView.className = 'hidden flex-1 overflow-y-auto hide-scrollbar bg-white p-6 md:p-10';
-  dataExportView.addEventListener('click', handleDataExportClick);
-  mainWorkspace.appendChild(dataExportView);
-  return dataExportView;
 }
 
 function ensureResultsView() {
@@ -2000,12 +1932,6 @@ function formatPlatformLabel(platform) {
   };
 
   return labels[platform] || platform;
-}
-
-function getSurveyVersionCount(survey) {
-  return (survey.news || []).reduce((count, news) => (
-    count + getVersionEntries(news).length
-  ), 0);
 }
 
 function getVersionPlatformVariantCount(version) {
@@ -2454,278 +2380,6 @@ function openHistoryDataExportModal(surveyId) {
   lucide.createIcons({ scope: overlay });
 }
 
-function getGazeResultSampleCount(result) {
-  if (Number.isFinite(Number(result.sampleCount))) {
-    return Number(result.sampleCount);
-  }
-  return Array.isArray(result.gazeData) ? result.gazeData.length : 0;
-}
-
-function getSurveyGazeSampleCount(survey) {
-  return (survey.participantResults || []).reduce((count, result) => (
-    count + getGazeResultSampleCount(result)
-  ), 0);
-}
-
-function getExportableSurveys() {
-  return appState.surveys
-    .filter((survey) => Array.isArray(survey.participantResults) && survey.participantResults.length > 0)
-    .slice()
-    .sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
-}
-
-function renderDataExportView() {
-  const dataExportView = document.getElementById('data-export-view');
-  if (!dataExportView) return;
-
-  const exportableSurveys = getExportableSurveys();
-
-  if (exportableSurveys.length === 0) {
-    dataExportView.innerHTML = `
-      <header class="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-semibold mb-2">${escapeHtml(t('export.title'))}</h1>
-          <p class="text-sm text-gray-500">${escapeHtml(t('export.emptySubtitle'))}</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button type="button" data-action="export-data-summary" disabled class="bg-sky-200 text-white text-xs font-bold px-4 py-2 rounded-md cursor-not-allowed">
-            ${escapeHtml(t('export.button'))}
-          </button>
-          <button type="button" data-action="refresh-gaze-data" class="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors">
-            ${escapeHtml(t('export.refresh'))}
-          </button>
-        </div>
-      </header>
-      <div class="grid grid-cols-1 gap-4">
-        <section class="border border-dashed border-gray-300 rounded-lg bg-gray-50 p-6">
-          <p class="text-sm font-semibold text-gray-900">${escapeHtml(t('export.gazeEndpoint'))}</p>
-          <p class="text-sm text-gray-500 mt-2">${escapeHtml(t('export.noGaze'))}</p>
-          <p class="text-sm text-gray-500 mt-1">${escapeHtml(t('export.gazeSubmit', { endpoint: '/api/gaze-data' }))}</p>
-        </section>
-      </div>
-    `;
-    return;
-  }
-
-  dataExportView.innerHTML = `
-    <header class="mb-8 flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold mb-2">${escapeHtml(t('export.title'))}</h1>
-        <p class="text-sm text-gray-500">${escapeHtml(t('export.subtitle'))}</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" data-action="export-data-summary" class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors">
-          ${escapeHtml(t('export.button'))}
-        </button>
-        <button type="button" data-action="refresh-gaze-data" class="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors">
-          ${escapeHtml(t('export.refresh'))}
-        </button>
-      </div>
-    </header>
-    <div class="grid grid-cols-1 gap-4 mb-5">
-      <section class="border border-gray-200 rounded-lg bg-white p-5 shadow-sm">
-        <p class="text-sm font-semibold text-gray-900">${escapeHtml(t('export.gazeEndpoint'))}</p>
-        <p class="text-sm text-gray-500 mt-2">${escapeHtml(t('export.gazeSubmitComplete', { endpoint: '/api/gaze-data' }))}</p>
-      </section>
-    </div>
-    <div class="space-y-5">
-      ${exportableSurveys.map((survey) => `
-        <article class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-            <div>
-              <h2 class="text-lg font-bold text-black">${escapeHtml(survey.title)}</h2>
-              <p class="text-xs text-gray-500 mt-1">
-                ${escapeHtml(t('export.completed', { date: formatSurveyDate(survey.completedAt || survey.createdAt) }))}
-              </p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" data-action="export-json" data-survey-id="${escapeHtml(survey.id)}" class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors">
-                ${escapeHtml(t('export.exportJson'))}
-              </button>
-              <button type="button" data-action="export-csv" data-survey-id="${escapeHtml(survey.id)}" class="bg-white border border-gray-300 text-gray-700 text-xs font-bold px-4 py-2 rounded-md hover:bg-gray-50 transition-colors">
-                ${escapeHtml(t('export.exportCsv'))}
-              </button>
-            </div>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">
-            <div class="bg-gray-50 rounded-lg p-4">
-              <span class="block text-xl font-bold text-gray-900">${survey.participantResults.length}</span>
-              <span class="text-xs font-semibold text-gray-500 uppercase">${escapeHtml(t('profile.participantResults'))}</span>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <span class="block text-xl font-bold text-gray-900">${getSurveyGazeSampleCount(survey).toLocaleString()}</span>
-              <span class="text-xs font-semibold text-gray-500 uppercase">${escapeHtml(t('export.gazeSamples'))}</span>
-            </div>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <span class="block text-xl font-bold text-gray-900">${survey.news.length}</span>
-              <span class="text-xs font-semibold text-gray-500 uppercase">${escapeHtml(t('export.newsItems'))}</span>
-            </div>
-          </div>
-          <div class="mt-5 border-t border-gray-100 pt-4 space-y-2">
-            ${survey.participantResults.map((result) => `
-              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-1 text-sm">
-                <span class="font-semibold text-gray-900">${escapeHtml(result.participantLabel || result.participantId || result.id)}</span>
-                <span class="text-xs text-gray-500">
-                  ${escapeHtml(t('export.samplesClosed', {
-                    samples: getGazeResultSampleCount(result).toLocaleString(),
-                    date: formatSurveyDate(result.closedAt)
-                  }))}
-                </span>
-              </div>
-            `).join('')}
-          </div>
-        </article>
-      `).join('')}
-    </div>
-  `;
-}
-
-function getSurveyExportPayload(survey) {
-  return {
-    id: survey.id,
-    title: survey.title,
-    status: survey.status,
-    inviteCode: survey.inviteCode,
-    createdAt: survey.createdAt,
-    publishedAt: survey.publishedAt,
-    completedAt: survey.completedAt,
-    exportReady: survey.exportReady,
-    news: survey.news,
-    participantResults: survey.participantResults || []
-  };
-}
-
-function slugifyFilename(value) {
-  return String(value || 'survey')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'survey';
-}
-
-function downloadTextFile(filename, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-function getSampleValue(sample, keys) {
-  for (const key of keys) {
-    if (sample && sample[key] !== undefined && sample[key] !== null) {
-      return sample[key];
-    }
-  }
-  return '';
-}
-
-function convertSurveyGazeDataToCsv(survey) {
-  const rows = [[
-    'surveyId',
-    'surveyTitle',
-    'inviteCode',
-    'participantId',
-    'participantLabel',
-    'resultId',
-    'startedAt',
-    'closedAt',
-    'receivedAt',
-    'qualityScore',
-    'sampleIndex',
-    'timestamp',
-    'x',
-    'y',
-    'confidence',
-    'newsIndex',
-    'version'
-  ]];
-
-  (survey.participantResults || []).forEach((result) => {
-    (result.gazeData || []).forEach((sample, index) => {
-      rows.push([
-        survey.id,
-        survey.title,
-        result.inviteCode,
-        result.participantId,
-        result.participantLabel,
-        result.id,
-        result.startedAt,
-        result.closedAt,
-        result.receivedAt,
-        result.qualityScore,
-        index,
-        getSampleValue(sample, ['timestamp', 'time', 't']),
-        getSampleValue(sample, ['x', 'gazeX', 'clientX', 'screenX']),
-        getSampleValue(sample, ['y', 'gazeY', 'clientY', 'screenY']),
-        getSampleValue(sample, ['confidence', 'score']),
-        getSampleValue(sample, ['newsIndex', 'news_index']),
-        getSampleValue(sample, ['version', 'variant'])
-      ]);
-    });
-  });
-
-  return rows.map((row) => row.map(csvCell).join(',')).join('\n');
-}
-
-function exportSurveyData(surveyId, format) {
-  const survey = appState.surveys.find((item) => item.id === surveyId);
-  if (!survey) return;
-
-  const baseFilename = `${slugifyFilename(survey.title)}-gaze-data`;
-  if (format === 'json') {
-    downloadTextFile(
-      `${baseFilename}.json`,
-      JSON.stringify(getSurveyExportPayload(survey), null, 2),
-      'application/json'
-    );
-    return;
-  }
-
-  downloadTextFile(
-    `${baseFilename}.csv`,
-    convertSurveyGazeDataToCsv(survey),
-    'text/csv'
-  );
-}
-
-function handleDataExportClick(e) {
-  const target = e.target.closest('[data-action]');
-  if (!target) return;
-
-  const action = target.getAttribute('data-action');
-  if (action === 'refresh-gaze-data') {
-    syncGazeDataFromServer({ notify: false });
-    collectPendingParticipantGazeData();
-    renderDataExportView();
-    return;
-  }
-
-  if (action === 'export-data-summary') {
-    const exportableSurvey = getExportableSurveys()[0];
-    if (exportableSurvey) {
-      exportSurveyData(exportableSurvey.id, 'json');
-    }
-    return;
-  }
-
-  if (action === 'export-json' || action === 'export-csv') {
-    exportSurveyData(
-      target.getAttribute('data-survey-id'),
-      action === 'export-json' ? 'json' : 'csv'
-    );
-  }
-}
-
 function handleProfileClick(e) {
   const target = e.target.closest('[data-action]');
   if (!target) return;
@@ -2842,126 +2496,55 @@ async function renderResultsView() {
   }
 }
 
-function showEditorView() {
+const AUXILIARY_WORKSPACE_VIEW_IDS = new Set([
+  'profile-view',
+  'history-view',
+  'results-view'
+]);
+
+function isAuxiliaryWorkspaceView(element) {
+  return AUXILIARY_WORKSPACE_VIEW_IDS.has(element?.id);
+}
+
+function setWorkspaceActiveView(targetView, navKey) {
   const mainWorkspace = getMainWorkspace();
-  const profileView = ensureProfileView();
-  const historyView = ensureHistoryView();
-  const dataExportView = ensureDataExportView();
-  const resultsView = ensureResultsView();
 
   if (mainWorkspace) {
     Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === profileView || child === historyView || child === dataExportView || child === resultsView) {
-        child.classList.add('hidden');
-      } else {
-        child.classList.remove('hidden');
-      }
+      const shouldShow = targetView
+        ? child === targetView
+        : !isAuxiliaryWorkspaceView(child);
+      child.classList.toggle('hidden', !shouldShow);
     });
   }
 
-  setActiveNavItem('editor');
+  setActiveNavItem(navKey);
+}
+
+function showEditorView() {
+  setWorkspaceActiveView(null, 'editor');
   renderAll();
 }
 
 function showHistoryView() {
   saveAppStateToLocalStorage();
-  renderHistoryView();
-
-  const mainWorkspace = getMainWorkspace();
-  const profileView = ensureProfileView();
   const historyView = ensureHistoryView();
-  const dataExportView = ensureDataExportView();
-  const resultsView = ensureResultsView();
-
-  if (mainWorkspace) {
-    Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === historyView) {
-        child.classList.remove('hidden');
-      } else {
-        child.classList.add('hidden');
-      }
-    });
-  }
-
-  setActiveNavItem('history');
+  renderHistoryView();
+  setWorkspaceActiveView(historyView, 'history');
 }
 
 function showProfileView() {
   saveAppStateToLocalStorage();
+  const profileView = ensureProfileView();
   renderProfileView();
-
-  const mainWorkspace = getMainWorkspace();
-  const profileView = ensureProfileView();
-  const resultsView = ensureResultsView();
-
-  if (mainWorkspace) {
-    Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === profileView) {
-        child.classList.remove('hidden');
-      } else {
-        child.classList.add('hidden');
-      }
-    });
-  }
-
-  setActiveNavItem('profile');
-}
-
-function showDataExportView() {
-  saveAppStateToLocalStorage();
-  collectPendingParticipantGazeData();
-  const dataExportView = ensureDataExportView();
-  syncGazeDataFromServer({ notify: false });
-  renderDataExportView();
-
-  const mainWorkspace = getMainWorkspace();
-  const profileView = ensureProfileView();
-  const historyView = ensureHistoryView();
-  const resultsView = ensureResultsView();
-
-  if (mainWorkspace) {
-    Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === dataExportView) {
-        child.classList.remove('hidden');
-      } else {
-        child.classList.add('hidden');
-      }
-    });
-  }
-
-  if (historyView) {
-    historyView.classList.add('hidden');
-  }
-
-  if (profileView) {
-    profileView.classList.add('hidden');
-  }
-
-  if (resultsView) {
-    resultsView.classList.add('hidden');
-  }
-
-  setActiveNavItem('dataExport');
+  setWorkspaceActiveView(profileView, 'profile');
 }
 
 function showResultsView() {
   saveAppStateToLocalStorage();
-  renderResultsView();
-
-  const mainWorkspace = getMainWorkspace();
   const resultsView = ensureResultsView();
-
-  if (mainWorkspace) {
-    Array.from(mainWorkspace.children).forEach((child) => {
-      if (child === resultsView) {
-        child.classList.remove('hidden');
-      } else {
-        child.classList.add('hidden');
-      }
-    });
-  }
-
-  setActiveNavItem('results');
+  renderResultsView();
+  setWorkspaceActiveView(resultsView, 'results');
 }
 
 function bindNewSurveyNavigation() {
@@ -2985,14 +2568,6 @@ function bindHistoryNavigation() {
 
   if (historyNavItem) {
     historyNavItem.addEventListener('click', showHistoryView);
-  }
-}
-
-function bindDataExportNavigation() {
-  const dataExportNavItem = getNavItemByKey('dataExport');
-
-  if (dataExportNavItem) {
-    dataExportNavItem.addEventListener('click', showDataExportView);
   }
 }
 
@@ -4229,7 +3804,6 @@ tabs.forEach(tab => {
 initializeAppState();
 ensureCreateSurveyButton();
 bindNoSurveyEditGuard();
-ensureDataExportNavigation();
 applyStaticTranslations();
 updateLanguageMenuState();
 startParticipantGazeDataListeners();
@@ -4237,7 +3811,6 @@ bindPublishSurveyButton();
 bindNewSurveyNavigation();
 bindProfileNavigation();
 bindHistoryNavigation();
-bindDataExportNavigation();
 bindResultsNavigation();
 lucide.createIcons(); // 初始化页面中固定的图标 (如导航栏)
 renderAll();
