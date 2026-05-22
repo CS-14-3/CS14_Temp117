@@ -245,6 +245,26 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   max-height: none !important;
 }
 
+/* Only scale down Instagram and TikTok cards */
+.participant-carousel-post .prototype2-instagram {
+  transform: scale(0.86);
+  transform-origin: center top;
+}
+
+.participant-carousel-post .prototype2-tiktok {
+  transform: scale(0.82);
+  transform-origin: center top;
+}
+
+/* Reduce the unused layout space left by transform scaling */
+.participant-carousel-post:has(.prototype2-instagram) {
+  margin-bottom: -70px;
+}
+
+.participant-carousel-post:has(.prototype2-tiktok) {
+  margin-bottom: -120px;
+}
+
 .participant-carousel-btn {
   width: 58px;
   height: 58px;
