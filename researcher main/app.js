@@ -427,6 +427,13 @@ const researcherSignOutBtn = document.getElementById('researcher-sign-out-btn');
 const researcherSessionStorageKey = 'surveyLabResearcherSession';
 
 function getResearcherSession() {
+  if (
+    window.__SURVEY_ARCHITECT_RESEARCHER_SESSION__ &&
+    typeof window.__SURVEY_ARCHITECT_RESEARCHER_SESSION__ === 'object'
+  ) {
+    return window.__SURVEY_ARCHITECT_RESEARCHER_SESSION__;
+  }
+
   const storedSession = localStorage.getItem(researcherSessionStorageKey);
   if (!storedSession) {
     return null;
@@ -441,7 +448,23 @@ function getResearcherSession() {
 
 function getResearcherUsername() {
   const session = getResearcherSession();
-  return session && session.username ? session.username.trim() : 'Researcher';
+  const username = session?.name || session?.username || session?.email || '';
+  return username ? String(username).trim() : 'Researcher';
+}
+
+function getResearcherStorageIdentity() {
+  const session = getResearcherSession() || {};
+  const rawIdentity = session.email || session.username || session.name || 'anonymous';
+  const normalizedIdentity = String(rawIdentity).trim().toLowerCase();
+  return normalizedIdentity || 'anonymous';
+}
+
+function getAccountScopedStorageKey(baseKey) {
+  return `${baseKey}:${encodeURIComponent(getResearcherStorageIdentity())}`;
+}
+
+function getAppStateStorageKey() {
+  return getAccountScopedStorageKey(APP_STATE_STORAGE_KEY);
 }
 
 function renderResearcherIdentity() {
@@ -472,7 +495,6 @@ renderResearcherIdentity();
 
 function handleResearcherSignOut() {
   localStorage.removeItem(researcherSessionStorageKey);
-  localStorage.removeItem(APP_STATE_STORAGE_KEY);
   localStorage.removeItem(GAZE_DATA_STORAGE_KEY);
   window.location.href = '/login';
 }
@@ -591,6 +613,7 @@ const createDefaultVersion = (platform = 'instagram') => ({
 });
 
 const createDefaultNews = (platform = 'instagram') => ({
+  activeVersion: 'vA',
   link: '',
   versions: {
     'vA': createDefaultVersion(platform),
@@ -654,6 +677,48 @@ function getCurrentSurvey() {
 
 function clonePlainData(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function getNewsActiveVersion(news, fallbackVersion = 'vA') {
+  const versions = news && news.versions && typeof news.versions === 'object'
+    ? news.versions
+    : {};
+  const activeVersion = typeof news?.activeVersion === 'string' ? news.activeVersion : '';
+
+  if (activeVersion && versions[activeVersion]) {
+    return activeVersion;
+  }
+  if (fallbackVersion && versions[fallbackVersion]) {
+    return fallbackVersion;
+  }
+  if (versions.vA) {
+    return 'vA';
+  }
+
+  return Object.keys(versions)[0] || 'vA';
+}
+
+function rememberCurrentNewsVersion(versionKey = surveyState.currentVersion) {
+  const currentNews = surveyState.news[surveyState.currentNewsIndex];
+  if (!currentNews || !currentNews.versions || !currentNews.versions[versionKey]) {
+    return;
+  }
+
+  currentNews.activeVersion = versionKey;
+}
+
+function activateNews(index) {
+  if (!surveyState.news.length) {
+    surveyState.currentNewsIndex = 0;
+    surveyState.currentVersion = 'vA';
+    return;
+  }
+
+  rememberCurrentNewsVersion();
+  const nextIndex = Math.min(Math.max(index, 0), surveyState.news.length - 1);
+  surveyState.currentNewsIndex = nextIndex;
+  surveyState.currentVersion = getNewsActiveVersion(surveyState.news[nextIndex]);
+  rememberCurrentNewsVersion();
 }
 
 function getVersionSnapshot(version) {
@@ -840,7 +905,11 @@ function normalizeNewsItem(newsItem, includeDefaultVersions = true) {
   return {
     ...newsItem,
     link: typeof newsItem.link === 'string' ? newsItem.link : '',
-    versions: normalizedVersions
+    versions: normalizedVersions,
+    activeVersion: getNewsActiveVersion(
+      { ...newsItem, versions: normalizedVersions },
+      'vA'
+    )
   };
 }
 
@@ -848,8 +917,9 @@ function getPublishedNewsSnapshot(newsItem, selectedVersionKey) {
   const normalizedNews = normalizeNewsItem(newsItem, false);
   const versions = normalizedNews.versions || {};
   const versionKeys = Object.keys(versions);
-  const publishedVersionKey = versions[selectedVersionKey]
-    ? selectedVersionKey
+  const requestedVersionKey = selectedVersionKey || getNewsActiveVersion(normalizedNews);
+  const publishedVersionKey = versions[requestedVersionKey]
+    ? requestedVersionKey
     : (versions.vA ? 'vA' : versionKeys[0]);
   const publishedVersion = publishedVersionKey
     ? getPublishedVersionSnapshot(versions[publishedVersionKey])
@@ -911,7 +981,9 @@ function createPublishedSnapshot(survey, selectedVersionKey = 'vA') {
     publishedAt: survey.publishedAt,
     completedAt: survey.completedAt,
     publishedVersionKey: selectedVersionKey,
-    news: (survey.news || []).map((news) => getPublishedNewsSnapshot(news, selectedVersionKey)),
+    news: (survey.news || []).map((news) => (
+      getPublishedNewsSnapshot(news, getNewsActiveVersion(news, selectedVersionKey))
+    )),
     translations: clonePlainData(survey.translations || {}),
     participantResults: [],
     exportReady: false
@@ -1165,14 +1237,16 @@ function bindSurveyToEditor(survey) {
   if (!survey) return;
 
   survey.news = Array.isArray(survey.news) && survey.news.length
-    ? survey.news
+    ? survey.news.map(normalizeNewsItem)
     : [createDefaultNews('instagram')];
   surveyState.currentNewsIndex = 0;
-  surveyState.currentVersion = 'vA';
   surveyState.news = survey.news;
+  surveyState.currentVersion = getNewsActiveVersion(surveyState.news[0]);
+  rememberCurrentNewsVersion();
 }
 
 function saveAppStateToLocalStorage() {
+  rememberCurrentNewsVersion();
   syncSurveyPlatformVariants();
   const currentSurvey = getCurrentSurvey();
   if (currentSurvey) {
@@ -1180,7 +1254,7 @@ function saveAppStateToLocalStorage() {
   }
 
   try {
-    localStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(appState));
+    localStorage.setItem(getAppStateStorageKey(), JSON.stringify(appState));
   } catch (error) {
     console.warn('Unable to save survey data:', error);
   }
@@ -1188,7 +1262,7 @@ function saveAppStateToLocalStorage() {
 
 function loadAppStateFromLocalStorage() {
   try {
-    const storedState = localStorage.getItem(APP_STATE_STORAGE_KEY);
+    const storedState = localStorage.getItem(getAppStateStorageKey());
     if (!storedState) return false;
 
     const parsedState = JSON.parse(storedState);
@@ -1214,7 +1288,7 @@ function loadAppStateFromLocalStorage() {
 }
 
 async function initializeAppState() {
-  // 检查服务器是否重启并清空本地存储
+  // 检查服务器是否重启，只重置临时登录状态，不清空账号历史
   try {
     const response = await fetch('/api/server-info');
     if (response.ok) {
@@ -1223,8 +1297,9 @@ async function initializeAppState() {
       
       // 如果本地没有时间戳，或者本地时间戳与服务器不一致，说明服务器重启过
       if (lastStartTime !== info.start_time) {
-        console.log('Server restart detected. Clearing local storage...');
-        localStorage.clear();
+        console.log('Server restart detected. Resetting temporary session state...');
+        localStorage.removeItem(researcherSessionStorageKey);
+        localStorage.removeItem(GAZE_DATA_STORAGE_KEY);
         localStorage.setItem('SERVER_START_TIME', info.start_time);
         
         // 如果是在登录后的页面，清空后直接跳回登录页
@@ -1532,6 +1607,7 @@ async function handlePublishSurveyClick() {
     return;
   }
 
+  rememberCurrentNewsVersion();
   syncSurveyPlatformVariants();
   currentSurvey.news = surveyState.news;
   if (!currentSurvey.inviteCode) {
@@ -3587,7 +3663,7 @@ function renderNewsTabs() {
     tab.className = `news-tab px-6 py-2 rounded-xl text-sm font-bold transition-all ${index === surveyState.currentNewsIndex ? 'active' : 'inactive'}`;
     tab.textContent = t('editor.newsTab', { number: index + 1 });
     tab.addEventListener('click', () => {
-      surveyState.currentNewsIndex = index;
+      activateNews(index);
       renderAll();
     });
     
@@ -3598,6 +3674,7 @@ function renderNewsTabs() {
       deleteBtn.innerHTML = '<i data-lucide="x"></i>';
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation(); // 防止触发 tab 的点击事件
+        rememberCurrentNewsVersion();
         surveyState.news.splice(index, 1);
         
         // 如果删除的是当前选中的新闻，或者删除后索引越界，更新 currentNewsIndex
@@ -3606,6 +3683,8 @@ function renderNewsTabs() {
         } else if (index < surveyState.currentNewsIndex) {
           surveyState.currentNewsIndex--;
         }
+        surveyState.currentVersion = getNewsActiveVersion(surveyState.news[surveyState.currentNewsIndex]);
+        rememberCurrentNewsVersion();
         
         renderAll();
       });
@@ -3622,15 +3701,12 @@ function renderNewsTabs() {
   addBtn.className = 'w-10 h-10 flex items-center justify-center rounded-xl border-2 border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500 transition-all ml-2 shrink-0';
   addBtn.innerHTML = '<i data-lucide="plus" class="w-5 h-5"></i>';
   addBtn.addEventListener('click', () => {
+    rememberCurrentNewsVersion();
     const currentPlatform = surveyState.news[surveyState.currentNewsIndex].versions[surveyState.currentVersion].platform;
-    surveyState.news.push({
-      link: '',
-      versions: {
-        'vA': createDefaultVersion(currentPlatform),
-        'vB': createDefaultVersion(currentPlatform)
-      }
-    });
+    surveyState.news.push(createDefaultNews(currentPlatform));
     surveyState.currentNewsIndex = surveyState.news.length - 1;
+    surveyState.currentVersion = getNewsActiveVersion(surveyState.news[surveyState.currentNewsIndex]);
+    rememberCurrentNewsVersion();
     renderAll();
   });
   newsTabsContainer.appendChild(addBtn);
@@ -4124,6 +4200,10 @@ tabs.forEach(tab => {
     if (selectedVersion === surveyState.currentVersion) return;
 
     const currentNews = surveyState.news[surveyState.currentNewsIndex];
+    if (!currentNews.versions[selectedVersion]) {
+      return;
+    }
+
     const currentPlatform = currentNews.versions[surveyState.currentVersion].platform;
     syncCurrentPlatformVariant(currentNews.versions[surveyState.currentVersion]);
     switchVersionPlatform(currentNews.versions[selectedVersion], currentPlatform);
@@ -4138,6 +4218,7 @@ tabs.forEach(tab => {
 
     // 更新状态并重绘
     surveyState.currentVersion = selectedVersion;
+    rememberCurrentNewsVersion(selectedVersion);
     renderEditor();
     renderPreview();
     saveAppStateToLocalStorage();

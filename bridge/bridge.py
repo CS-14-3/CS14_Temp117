@@ -600,7 +600,7 @@ class ResearcherHandler(BasePrototypeHandler):
     def serve_edit(self, session: dict[str, str]) -> None:
         page = self.app_state.edit_page
         html_text = rewrite_page_assets(page, load_text(page.entry))
-        html_text = inject_before_app_script(html_text, researcher_edit_pre_app_script())
+        html_text = inject_before_app_script(html_text, researcher_edit_pre_app_script(session))
         html_text = inject_before_body_end(
             html_text,
             researcher_edit_bridge_script(session, self.app_state.participant_origin),
@@ -792,10 +792,12 @@ def researcher_register_bridge_script() -> str:
 """.strip()
 
 
-def researcher_edit_pre_app_script() -> str:
+def researcher_edit_pre_app_script(session: dict[str, str]) -> str:
+    session_json = json_for_script(session)
     return """
 <script>
 (function () {
+  window.__SURVEY_ARCHITECT_RESEARCHER_SESSION__ = __SESSION_JSON__;
   window.lucide = window.lucide || { createIcons: function () {} };
 
   const originalFetch = window.fetch.bind(window);
@@ -812,7 +814,7 @@ def researcher_edit_pre_app_script() -> str:
   };
 })();
 </script>
-""".strip()
+""".replace("__SESSION_JSON__", session_json).strip()
 
 
 def researcher_edit_bridge_script(session: dict[str, str], participant_origin: str) -> str:
