@@ -1250,25 +1250,18 @@ function loadAppStateFromLocalStorage() {
 }
 
 async function initializeAppState() {
-  // 检查服务器是否重启，只重置临时登录状态，不清空账号历史
+  // Track backend restarts without invalidating a session already accepted by the bridge.
   try {
     const response = await fetch('/api/server-info');
     if (response.ok) {
       const info = await response.json();
+      const serverStartTime = info.start_time || info.startedAt;
       const lastStartTime = localStorage.getItem('SERVER_START_TIME');
-      
-      // 如果本地没有时间戳，或者本地时间戳与服务器不一致，说明服务器重启过
-      if (lastStartTime !== info.start_time) {
-        console.log('Server restart detected. Resetting temporary session state...');
-        localStorage.removeItem(researcherSessionStorageKey);
+
+      if (serverStartTime && lastStartTime !== serverStartTime) {
+        console.log('Server restart detected. Refreshing runtime marker...');
         localStorage.removeItem(GAZE_DATA_STORAGE_KEY);
-        localStorage.setItem('SERVER_START_TIME', info.start_time);
-        
-        // 如果是在登录后的页面，清空后直接跳回登录页
-        if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
-          window.location.href = '/login';
-          return;
-        }
+        localStorage.setItem('SERVER_START_TIME', serverStartTime);
       }
     }
   } catch (error) {
