@@ -5,13 +5,10 @@
     return;
   }
 
-  const form = document.getElementById("researcher-login-form");
   const passwordInput = root.querySelector("[data-password-input]");
   const passwordToggle = root.querySelector("[data-password-toggle]");
   const eyeOpen = root.querySelector("[data-eye-open]");
   const eyeClosed = root.querySelector("[data-eye-closed]");
-  const accountStorageKey = "surveyLabResearcherAccount";
-  const sessionStorageKey = "surveyLabResearcherSession";
 
   const navigate = (path, filePath) => {
     const target =
@@ -42,49 +39,6 @@
       if (eyeClosed) {
         eyeClosed.hidden = !isVisible;
       }
-    });
-  }
-
-  if (form) {
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      const username = form.elements.username.value.trim();
-      const password = form.elements.password.value;
-      const storedAccount = localStorage.getItem(accountStorageKey);
-      let account = null;
-
-      if (storedAccount) {
-        try {
-          account = JSON.parse(storedAccount);
-        } catch (error) {
-          account = null;
-        }
-      }
-
-      if (!username || !password) {
-        alert("Please enter your username and password.");
-        return;
-      }
-
-      if (!account) {
-        alert("No researcher account found. Please sign up first.");
-        return;
-      }
-
-      if (username !== account.username || password !== account.password) {
-        alert("Incorrect username or password.");
-        return;
-      }
-
-      localStorage.setItem(
-        sessionStorageKey,
-        JSON.stringify({
-          username,
-          loggedInAt: new Date().toISOString()
-        })
-      );
-
-      navigate(root.dataset.loginSuccess, root.dataset.fileLoginSuccess);
     });
   }
 
