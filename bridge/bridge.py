@@ -1963,9 +1963,12 @@ def inject_before_head_end(html_text: str, injected: str) -> str:
 
 
 def inject_before_participant_runtime(html_text: str, injected: str) -> str:
-    marker = "<script>\n/* ══════════════════════════════════════════════════\n   SOCKET.IO"
-    if marker in html_text:
-        return html_text.replace(marker, f"{injected}\n{marker}", 1)
+    socket_bootstrap = re.search(r"\b(?:var|let|const)\s+socket\s*=\s*io\s*\(", html_text, re.IGNORECASE)
+    if socket_bootstrap:
+        script_tags = list(re.finditer(r"<script\b[^>]*>", html_text[:socket_bootstrap.start()], re.IGNORECASE))
+        if script_tags:
+            insert_at = script_tags[-1].start()
+            return html_text[:insert_at] + injected + "\n" + html_text[insert_at:]
     return inject_before_body_end(html_text, injected)
 
 
