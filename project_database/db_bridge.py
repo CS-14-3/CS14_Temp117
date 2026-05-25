@@ -30,9 +30,11 @@ DEFAULT_TIME_LABEL = "Just now"
 MIN_AWARE_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
 PRESENTATION_ICONS_KEY = "_presentationIcons"
 PRESENTATION_ACTION_BUTTONS_KEY = "_presentationActionButtons"
+PRESENTATION_METRICS_KEY = "_presentationMetrics"
 PRESENTATION_INTERNAL_KEYS = {
     PRESENTATION_ICONS_KEY,
     PRESENTATION_ACTION_BUTTONS_KEY,
+    PRESENTATION_METRICS_KEY,
 }
 
 
@@ -53,6 +55,47 @@ def normalize_invite_code(value: Any) -> str:
 
 def safe_json_clone(value: Any) -> Any:
     return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+
+
+def normalize_display_count(value: Any) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+
+    text = str(value).strip().lower().replace(",", "")
+    if not text:
+        return 0
+
+    multiplier = 1
+    if text.endswith("k"):
+        multiplier = 1_000
+        text = text[:-1]
+    elif text.endswith("m"):
+        multiplier = 1_000_000
+        text = text[:-1]
+
+    try:
+        return max(0, int(float(text) * multiplier))
+    except ValueError:
+        digits = "".join(ch for ch in text if ch.isdigit() or ch == ".")
+        try:
+            return max(0, int(float(digits) * multiplier)) if digits else 0
+        except ValueError:
+            return 0
+
+
+def normalize_presentation_metrics(payload: dict[str, Any] | None) -> dict[str, Any]:
+    source = payload if isinstance(payload, dict) else {}
+    likes_label = str(source.get("likesLabel") or "likes").strip() or "likes"
+    return {
+        "likes": normalize_display_count(source.get("likes")),
+        "comments": normalize_display_count(source.get("comments")),
+        "shares": normalize_display_count(source.get("shares")),
+        "likesLabel": likes_label,
+    }
 
 
 def iso_to_datetime(value: Any) -> datetime | None:
@@ -232,10 +275,12 @@ class DBBridge:
                     hidden_elements.pop(internal_key, None)
                 icons = variant_payload.get("icons")
                 action_buttons = variant_payload.get("actionButtons")
+                metrics = normalize_presentation_metrics(variant_payload)
                 if isinstance(icons, dict):
                     hidden_elements[PRESENTATION_ICONS_KEY] = safe_json_clone(icons)
                 if isinstance(action_buttons, list):
                     hidden_elements[PRESENTATION_ACTION_BUTTONS_KEY] = safe_json_clone(action_buttons)
+                hidden_elements[PRESENTATION_METRICS_KEY] = metrics
                 if question_block.get("type") == "multiple":
                     hidden_elements = {**hidden_elements, "_questionBlockType": "multiple"}
                 else:
@@ -862,6 +907,7 @@ class DBBridge:
         hidden = variant.hidden_elements_json or {}
         icons = hidden.get(PRESENTATION_ICONS_KEY)
         action_buttons = hidden.get(PRESENTATION_ACTION_BUTTONS_KEY)
+        metrics = normalize_presentation_metrics(hidden.get(PRESENTATION_METRICS_KEY))
         has_configured_action_buttons = isinstance(action_buttons, list)
         hidden_for_client = {
             key: value
@@ -887,15 +933,16 @@ class DBBridge:
             "caption": variant.caption or "",
             "image": "" if hidden.get("image") else (variant.image_url or ""),
             "avatar": "" if hidden.get("avatar") else (variant.avatar_url or ""),
-            "likes": 0,
-            "comments": 0,
-            "shares": 0,
+            "likes": metrics["likes"],
+            "comments": metrics["comments"],
+            "shares": metrics["shares"],
             "username": "" if hidden.get("username") else username,
             "handle": handle,
             "location": "",
             "time": DEFAULT_TIME_LABEL,
             "hiddenElements": hidden_for_client,
             "icons": icons if isinstance(icons, dict) else {},
+            "likesLabel": metrics["likesLabel"],
             "actionButtons": action_buttons if has_configured_action_buttons else [],
             "actionButtonsConfigured": has_configured_action_buttons,
             "questionBlock": {
