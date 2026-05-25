@@ -46,16 +46,14 @@ button{border:none;background:none;cursor:pointer;}
 svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
 .hidden{display:none!important;}
 .participant-language-switcher {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  z-index: 5000;
+  position: relative;
+  z-index: 110;
 }
 
 .participant-language-btn {
-  height: 36px;
+  height: 32px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -64,7 +62,7 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .participant-language-dropdown {
@@ -601,18 +599,6 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   </style>
 </head>
 <body>
-<div id="participant-language-switcher" class="participant-language-switcher">
-  <button id="participant-language-btn" type="button" class="participant-language-btn">
-    <span>🌐</span>
-    <span id="participant-language-current">EN</span>
-  </button>
-  <div id="participant-language-dropdown" class="participant-language-dropdown hidden">
-    <button type="button" data-participant-locale="en">English</button>
-    <button type="button" data-participant-locale="zh-Hans">中文</button>
-    <button type="button" data-participant-locale="es">Español</button>
-  </div>
-</div>
-
 <!-- ════════════ STEP 1: INVITE SCREEN ════════════ -->
 <section class="invite-screen" id="inviteScreen">
   <div class="invite-card">
@@ -714,7 +700,18 @@ svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-lin
   <!-- top bar: participant ID + export -->
   <div id="study-topbar">
     <span id="study-id-badge">ID: ---</span>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div id="participant-language-switcher" class="participant-language-switcher">
+        <button id="participant-language-btn" type="button" class="participant-language-btn">
+          <span>🌐</span>
+          <span id="participant-language-current">EN</span>
+        </button>
+        <div id="participant-language-dropdown" class="participant-language-dropdown hidden">
+          <button type="button" data-participant-locale="en">English</button>
+          <button type="button" data-participant-locale="zh-Hans">中文</button>
+          <button type="button" data-participant-locale="es">Español</button>
+        </div>
+      </div>
       <button id="btn-finish-study" type="button" data-i18n="study.finish">Finish Study</button>
     </div>
   </div>
