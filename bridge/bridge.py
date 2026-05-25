@@ -662,15 +662,6 @@ class ParticipantHandler(BasePrototypeHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
-            if parsed.path == "/api/translations/generate":
-                payload = self.read_json_body()
-                result = forward_json_request(
-                    f"{SCRAPER_INTERNAL_URL}/api/translations/generate",
-                    payload,
-                )
-                self.send_json(result)
-                return
-
             if parsed.path == "/api/study-submit":
                 result = self.app_state.store.submit_study_payload(self.read_json_body())
                 self.send_json({"success": True, **result})
@@ -920,8 +911,7 @@ def participant_api_bootstrap_script(api_origin: str) -> str:
     return url === "/api/invite" ||
       url.startsWith("/api/invite?") ||
       url.startsWith("/api/posts/") ||
-      url === "/api/study-submit" ||
-      url === "/api/translations/generate";
+      url === "/api/study-submit";
   }}
 
   const originalFetch = window.fetch.bind(window);
@@ -1872,13 +1862,6 @@ def participant_bridge_script(api_origin: str) -> str:
     };
   }
 
-  function participantText(key, fallback, replacements) {
-    if (typeof window.pt === "function") {
-      try { return window.pt(key, replacements || {}); } catch (error) {}
-    }
-    return fallback;
-  }
-
   async function verifyInvite(event) {
     if (event) {
       event.preventDefault();
@@ -1886,14 +1869,14 @@ def participant_bridge_script(api_origin: str) -> str:
     }
     const code = document.getElementById("inviteInput").value.trim().toUpperCase();
     if (!code) {
-      alert(participantText("invite.empty", "Please enter an invitation code."));
+      alert("Please enter an invitation code.");
       return;
     }
     try {
       const response = await fetch(apiOrigin + "/api/invite?code=" + encodeURIComponent(code));
       const result = await response.json();
       if (!result.success || !result.posts.length) {
-        alert(result.error || participantText("invite.notFound", "Invite code not found."));
+        alert(result.error || "Invite code not found.");
         return;
       }
       activeInviteCode = result.inviteCode || code;
@@ -1906,7 +1889,7 @@ def participant_bridge_script(api_origin: str) -> str:
       show("calScreen");
       appPhase = "CAL_WELCOME";
     } catch (error) {
-      alert(participantText("invite.serviceUnavailable", "Participant prototype service is not available: {{error}}", { error: (error && error.message ? error.message : error) }));
+      alert("Participant prototype service is not available: " + (error && error.message ? error.message : error));
     }
   }
 
