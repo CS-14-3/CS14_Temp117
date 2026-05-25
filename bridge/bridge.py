@@ -1576,13 +1576,17 @@ def participant_bridge_script(api_origin: str) -> str:
       platform: normalizePlatform(raw.platform),
       id: raw.id != null ? raw.id : String(index + 1),
       newsIndex: Number(raw.newsIndex != null ? raw.newsIndex : index + 1),
+      newsLink: raw.newsLink != null ? raw.newsLink : "",
+      versionKey: raw.versionKey != null ? raw.versionKey : null,
       avatarLetter: raw.avatarLetter != null ? raw.avatarLetter : ((username || "").charAt(0).toUpperCase() || "S"),
       avatar: raw.avatar != null ? raw.avatar : "",
       handle: raw.handle != null ? raw.handle : "",
       hiddenElements: raw.hiddenElements && typeof raw.hiddenElements === "object" ? raw.hiddenElements : {},
       icons: raw.icons && typeof raw.icons === "object" ? raw.icons : {},
       likesLabel: raw.likesLabel != null ? raw.likesLabel : "likes",
+      musicInfo: raw.musicInfo != null ? raw.musicInfo : "",
       actionButtons: Array.isArray(raw.actionButtons) ? raw.actionButtons : [],
+      actionButtonsConfigured: raw.actionButtonsConfigured === true,
       questionBlock: raw.questionBlock != null ? raw.questionBlock : null,
       commentsList: Array.isArray(raw.commentsList) && raw.commentsList.length
         ? raw.commentsList
@@ -1806,6 +1810,47 @@ def participant_bridge_script(api_origin: str) -> str:
     }) || "instagram";
   }
 
+  function cloneStudyValue(value, fallback) {
+    if (value == null) return fallback;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  function buildStudyPostSnapshot(post, index) {
+    const p = post || {};
+    return {
+      index: index,
+      id: p.id || null,
+      newsIndex: p.newsIndex != null ? Number(p.newsIndex) : index + 1,
+      newsLink: p.newsLink || "",
+      versionKey: p.versionKey || null,
+      platform: p.platform || null,
+      username: p.username || null,
+      handle: p.handle || null,
+      location: p.location || null,
+      time: p.time || null,
+      caption: p.caption || "",
+      image: p.image || "",
+      avatar: p.avatar || "",
+      avatarLetter: p.avatarLetter || ((p.username || "").charAt(0).toUpperCase() || "S"),
+      previewLabel: p.previewLabel || "",
+      likes: Number(p.likes || 0),
+      comments: Number(p.comments || 0),
+      shares: Number(p.shares || 0),
+      likesLabel: p.likesLabel || "likes",
+      musicInfo: p.musicInfo || "",
+      hiddenElements: cloneStudyValue(p.hiddenElements, {}),
+      icons: cloneStudyValue(p.icons, {}),
+      actionButtons: cloneStudyValue(p.actionButtons, []),
+      actionButtonsConfigured: p.actionButtonsConfigured === true,
+      questionBlock: cloneStudyValue(p.questionBlock, null),
+      commentsList: cloneStudyValue(p.commentsList, [])
+    };
+  }
+
   function applyPublishedPosts(posts) {
     const normalizedPosts = posts.map(normalizePost);
     if (Array.isArray(window.postData)) {
@@ -1823,14 +1868,7 @@ def participant_bridge_script(api_origin: str) -> str:
       currentPostId = 0;
     }
     if (typeof studyData !== "undefined" && studyData) {
-      studyData.posts = normalizedPosts.map(function (post, index) {
-        return {
-          index: index,
-          id: post.id || null,
-          platform: post.platform || null,
-          username: post.username || null
-        };
-      });
+      studyData.posts = normalizedPosts.map(buildStudyPostSnapshot);
     }
   }
 

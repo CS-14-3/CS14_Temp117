@@ -28,6 +28,12 @@ DEFAULT_HANDLE = "@sydneynews"
 DEFAULT_LOCATION = "Sydney, Australia"
 DEFAULT_TIME_LABEL = "Just now"
 MIN_AWARE_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
+PRESENTATION_ICONS_KEY = "_presentationIcons"
+PRESENTATION_ACTION_BUTTONS_KEY = "_presentationActionButtons"
+PRESENTATION_INTERNAL_KEYS = {
+    PRESENTATION_ICONS_KEY,
+    PRESENTATION_ACTION_BUTTONS_KEY,
+}
 
 
 def utc_now() -> datetime:
@@ -222,6 +228,14 @@ class DBBridge:
                 variant_payload = self._extract_published_variant(news_payload, version_key)
                 question_block = self._normalize_question_block(variant_payload.get("questionBlock"))
                 hidden_elements = dict(self._normalize_hidden_elements(variant_payload.get("hiddenElements")) or {})
+                for internal_key in PRESENTATION_INTERNAL_KEYS:
+                    hidden_elements.pop(internal_key, None)
+                icons = variant_payload.get("icons")
+                action_buttons = variant_payload.get("actionButtons")
+                if isinstance(icons, dict):
+                    hidden_elements[PRESENTATION_ICONS_KEY] = safe_json_clone(icons)
+                if isinstance(action_buttons, list):
+                    hidden_elements[PRESENTATION_ACTION_BUTTONS_KEY] = safe_json_clone(action_buttons)
                 if question_block.get("type") == "multiple":
                     hidden_elements = {**hidden_elements, "_questionBlockType": "multiple"}
                 else:
@@ -846,7 +860,14 @@ class DBBridge:
     ) -> dict[str, Any]:
         del db
         hidden = variant.hidden_elements_json or {}
-        hidden_for_client = {key: value for key, value in hidden.items() if key != "_questionBlockType"}
+        icons = hidden.get(PRESENTATION_ICONS_KEY)
+        action_buttons = hidden.get(PRESENTATION_ACTION_BUTTONS_KEY)
+        has_configured_action_buttons = isinstance(action_buttons, list)
+        hidden_for_client = {
+            key: value
+            for key, value in hidden.items()
+            if key != "_questionBlockType" and key not in PRESENTATION_INTERNAL_KEYS
+        }
         username = variant.username or DEFAULT_USERNAME
         handle = variant.handle or DEFAULT_HANDLE
         options = [
@@ -874,6 +895,9 @@ class DBBridge:
             "location": "",
             "time": DEFAULT_TIME_LABEL,
             "hiddenElements": hidden_for_client,
+            "icons": icons if isinstance(icons, dict) else {},
+            "actionButtons": action_buttons if has_configured_action_buttons else [],
+            "actionButtonsConfigured": has_configured_action_buttons,
             "questionBlock": {
                 "enabled": question_enabled,
                 "type": question_type,

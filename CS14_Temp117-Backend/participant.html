@@ -1619,7 +1619,7 @@ function enterStudy(){
   studyPip.style.display='block';
   // Set up study send canvas
   studyData.studyStartedAt=new Date().toISOString();
-  studyData.posts=postData.map(function(p,i){return{index:i,id:p.id||null,platform:p.platform||null,username:p.username||null};});
+  studyData.posts=postData.map(buildStudyPostSnapshot);
   calModel=buildCalModel(studyData.calibrationLogs);
   gazeBuf.xs=[]; gazeBuf.ys=[];
   window.addEventListener('scroll',onScrollStart,{passive:true});
@@ -1993,9 +1993,55 @@ function defaultActions(platform) {
 }
 
 function actionsForPost(d) {
+  if (d.actionButtonsConfigured && Array.isArray(d.actionButtons)) {
+    return d.actionButtons;
+  }
+
   return Array.isArray(d.actionButtons) && d.actionButtons.length
     ? d.actionButtons
     : defaultActions(d.platform);
+}
+
+function cloneStudyValue(value, fallback) {
+  if (value == null) return fallback;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function buildStudyPostSnapshot(post, index) {
+  var p = post || {};
+  var actionButtons = actionsForPost(p);
+  return {
+    index: index,
+    id: p.id || null,
+    newsIndex: p.newsIndex != null ? Number(p.newsIndex) : index + 1,
+    newsLink: p.newsLink || '',
+    versionKey: p.versionKey || null,
+    platform: p.platform || null,
+    username: p.username || null,
+    handle: p.handle || null,
+    location: p.location || null,
+    time: p.time || null,
+    caption: p.caption || '',
+    image: p.image || '',
+    avatar: p.avatar || '',
+    avatarLetter: p.avatarLetter || avl(p.username, 'S'),
+    previewLabel: p.previewLabel || '',
+    likes: Number(p.likes || 0),
+    comments: Number(p.comments || 0),
+    shares: Number(p.shares || 0),
+    likesLabel: p.likesLabel || 'likes',
+    musicInfo: p.musicInfo || '',
+    hiddenElements: cloneStudyValue(p.hiddenElements, {}),
+    icons: cloneStudyValue(p.icons, {}),
+    actionButtons: cloneStudyValue(actionButtons, []),
+    actionButtonsConfigured: p.actionButtonsConfigured === true,
+    questionBlock: cloneStudyValue(p.questionBlock, null),
+    commentsList: cloneStudyValue(p.commentsList, [])
+  };
 }
 
 function actionCountLabel(d, btn) {
