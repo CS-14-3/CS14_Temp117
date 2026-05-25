@@ -574,12 +574,42 @@ function rActionsForPost(post){
   return rDefaultActions(post&&post.platform);
 }
 
+function rHiddenForPost(post){
+  return post&&post.hiddenElements&&typeof post.hiddenElements==='object'?post.hiddenElements:{};
+}
+
+function rActionHiddenKeys(action){
+  var id=rSafeText(action&&action.id).trim().toLowerCase();
+  var icon=rSafeText(action&&action.icon).trim().toLowerCase();
+  var keys=[];
+  if(id){
+    keys.push(id+'-icon');
+    if(id==='like') keys.push('likes-icon');
+    if(id==='comment') keys.push('comments-icon');
+    if(id==='share') keys.push('shares-icon','repost-icon');
+  }
+  if(icon) keys.push(icon+'-icon');
+  return keys;
+}
+
+function rVisibleActionsForPost(post){
+  var hidden=rHiddenForPost(post);
+  return rActionsForPost(post).filter(function(action){
+    return !rActionHiddenKeys(action).some(function(key){return hidden[key];});
+  });
+}
+
 function rIconGlyph(name){
   var map={
     'heart':'♥','message-circle':'◯','message-square':'▢','send':'↗','bookmark':'▯',
     'thumbs-up':'👍','share-2':'⤴','repeat-2':'↻','bar-chart-2':'▥','forward':'➜',
     'music':'♪','play-circle':'▶','more-horizontal':'•••','badge-check':'✓','check':'✓',
-    'star':'★','bell':'🔔','smile':'☺','eye':'◉','image':'▧','upload':'↑'
+    'user':'👤','plus':'+','x':'×','alert-circle':'!','info':'i','settings':'⚙',
+    'star':'★','bell':'🔔','smile':'☺','eye':'◉','eye-off':'◌','image':'▧','video':'▣',
+    'camera':'▤','link':'↗','hash':'#','at-sign':'@','mail':'✉','circle':'○','square':'□',
+    'triangle':'△','flag':'⚑','shield':'⬟','lock':'▣','unlock':'▢','trash-2':'⌫',
+    'edit-3':'✎','download':'↓','upload':'↑','external-link':'↗','refresh-cw':'↻',
+    'trending-up':'↗','map-pin':'⌖','calendar':'▦','clock':'◷'
   };
   return map[name]||rSafeText(name).slice(0,2).toUpperCase()||'•';
 }
@@ -817,7 +847,14 @@ function rMockCard(post,docX,docY,w,h,scrollY){
   }else{
     title=hidden.username?'':rSafeText(post.username).trim();
   }
-  if(title) rCtx.fillText(title.slice(0,24),nameX,nameY);
+  if(title){
+    var visibleTitle=title.slice(0,platform==='x'&&!hidden['verify-icon']?18:24);
+    rCtx.fillText(visibleTitle,nameX,nameY);
+    if(platform==='x'&&!hidden['verify-icon']){
+      var verifyX=nameX+rCtx.measureText(visibleTitle).width+9;
+      rDrawIconGlyph(icons.verify||'badge-check',verifyX,nameY-fs*0.18,Math.max(8,fs-2),'#1d9bf0');
+    }
+  }
   rCtx.fillStyle='#6b7280';rCtx.font='500 '+subFs+'px -apple-system,sans-serif';
   var sub='';
   if(platform==='x'){
@@ -843,7 +880,7 @@ function rMockCard(post,docX,docY,w,h,scrollY){
   rCtx.textAlign='right';
   rCtx.fillText(platform.toUpperCase(),x+w-10,y+HEADER/2+fs*0.38);
   rCtx.textAlign='left';
-  if(!hidden['more-icon']){
+  if(platform==='instagram'&&!hidden['more-icon']){
     rDrawIconGlyph(icons.more||'more-horizontal',x+w-22,y+HEADER/2,Math.max(10,fs),'#9ca3af');
   }
 
@@ -884,7 +921,7 @@ function rMockCard(post,docX,docY,w,h,scrollY){
 
   /* action icons */
   var dotY=footY+(cH-(footY-y))*0.38;
-  var actions=rActionsForPost(post);
+  var actions=rVisibleActionsForPost(post);
   actions.slice(0,6).forEach(function(btn,idx){
     var ix=x+18+idx*22;
     if(ix>x+w-18) return;
