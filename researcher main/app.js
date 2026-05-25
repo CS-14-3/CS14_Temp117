@@ -2785,7 +2785,7 @@ const templates = {
       <div class="p-3">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center space-x-4">
-            ${data.actionButtons.map((btn, index) => `
+            ${data.actionButtons.map((btn, index) => ({ btn, index })).filter(({ btn }) => btn.id !== 'save').map(({ btn, index }) => `
               <div class="relative group/btn" data-editable-container="action-button-${index}">
                 <i data-lucide="${btn.icon}" class="w-6 h-6 hover:text-gray-500 cursor-pointer" data-editable data-editable-type="action-button" data-index="${index}"></i>
                 <div class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover/btn:opacity-100 cursor-pointer transition-opacity" data-action="remove-button" data-index="${index}">
