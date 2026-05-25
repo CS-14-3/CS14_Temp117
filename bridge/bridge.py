@@ -662,6 +662,15 @@ class ParticipantHandler(BasePrototypeHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/translations/generate":
+                payload = self.read_json_body()
+                result = forward_json_request(
+                    f"{SCRAPER_INTERNAL_URL}/api/translations/generate",
+                    payload,
+                )
+                self.send_json(result)
+                return
+
             if parsed.path == "/api/study-submit":
                 result = self.app_state.store.submit_study_payload(self.read_json_body())
                 self.send_json({"success": True, **result})
@@ -911,7 +920,8 @@ def participant_api_bootstrap_script(api_origin: str) -> str:
     return url === "/api/invite" ||
       url.startsWith("/api/invite?") ||
       url.startsWith("/api/posts/") ||
-      url === "/api/study-submit";
+      url === "/api/study-submit" ||
+      url === "/api/translations/generate";
   }}
 
   const originalFetch = window.fetch.bind(window);
@@ -1440,6 +1450,7 @@ def participant_socket_bootstrap_script(camera_origin: str) -> str:
 <script>
 (function () {{
   const cameraOrigin = {camera_origin_json};
+  window.PROTOTYPE2_CAMERA_ORIGIN = cameraOrigin;
 
   function createSocketIoLite(origin) {{
     if (typeof WebSocket !== "function") {{
