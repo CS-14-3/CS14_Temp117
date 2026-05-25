@@ -296,7 +296,7 @@ class DBBridge:
                     handle=self._empty_to_none(variant_payload.get("handle")),
                     hidden_elements_json=hidden_elements or None,
                     question_text=self._empty_to_none(question_block.get("questionText")),
-                    question_required=bool(question_block.get("required")),
+                    question_required=bool(question_block.get("enabled") and question_block.get("required")),
                     created_at=published_at,
                     updated_at=published_at,
                 )
