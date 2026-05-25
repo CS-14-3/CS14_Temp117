@@ -1561,28 +1561,29 @@ def participant_bridge_script(api_origin: str) -> str:
   }
 
   function normalizePost(raw, index) {
-    const username = raw.username || "sydney_news_hub";
+    const username = raw.username != null ? raw.username : "sydney_news_hub";
+    const image = raw.image != null ? raw.image : "";
     return {
       username: username,
-      location: raw.location || "Sydney, Australia",
-      time: raw.time || "Just now",
-      caption: raw.caption || "",
-      likes: Number(raw.likes || 0),
-      comments: Number(raw.comments || 0),
-      shares: Number(raw.shares || 0),
-      previewLabel: raw.image ? "" : (raw.previewLabel || "[News Image Preview]"),
-      image: raw.image || "",
+      location: raw.location != null ? raw.location : "Sydney, Australia",
+      time: raw.time != null ? raw.time : "Just now",
+      caption: raw.caption != null ? raw.caption : "",
+      likes: Number(raw.likes != null ? raw.likes : 0),
+      comments: Number(raw.comments != null ? raw.comments : 0),
+      shares: Number(raw.shares != null ? raw.shares : 0),
+      previewLabel: image ? "" : (raw.previewLabel != null ? raw.previewLabel : "[News Image Preview]"),
+      image: image,
       platform: normalizePlatform(raw.platform),
-      id: raw.id || String(index + 1),
-      newsIndex: Number(raw.newsIndex || index + 1),
-      avatarLetter: raw.avatarLetter || username.charAt(0).toUpperCase() || "S",
-      avatar: raw.avatar || "",
-      handle: raw.handle || "",
-      hiddenElements: raw.hiddenElements || {},
-      icons: raw.icons || {},
-      likesLabel: raw.likesLabel || "likes",
+      id: raw.id != null ? raw.id : String(index + 1),
+      newsIndex: Number(raw.newsIndex != null ? raw.newsIndex : index + 1),
+      avatarLetter: raw.avatarLetter != null ? raw.avatarLetter : ((username || "").charAt(0).toUpperCase() || "S"),
+      avatar: raw.avatar != null ? raw.avatar : "",
+      handle: raw.handle != null ? raw.handle : "",
+      hiddenElements: raw.hiddenElements && typeof raw.hiddenElements === "object" ? raw.hiddenElements : {},
+      icons: raw.icons && typeof raw.icons === "object" ? raw.icons : {},
+      likesLabel: raw.likesLabel != null ? raw.likesLabel : "likes",
       actionButtons: Array.isArray(raw.actionButtons) ? raw.actionButtons : [],
-      questionBlock: raw.questionBlock || null,
+      questionBlock: raw.questionBlock != null ? raw.questionBlock : null,
       commentsList: Array.isArray(raw.commentsList) && raw.commentsList.length
         ? raw.commentsList
         : ["Published from the researcher prototype.", "Shown only in its matching platform module."],

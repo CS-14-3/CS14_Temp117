@@ -2935,12 +2935,14 @@ const templates = {
      <div class="bg-black text-white w-[320px] h-[580px] rounded-xl overflow-hidden shadow-xl relative flex items-center justify-center font-sans mx-auto">
        ${withRemoval(`
         <div class="absolute inset-0 bg-gray-800 flex flex-col items-center justify-center text-gray-300 overflow-hidden cursor-pointer" data-editable data-editable-type="image">
-           <div class="tiktok-image-fallback absolute inset-0 flex flex-col items-center justify-center bg-gray-800 text-gray-300">
-              <i data-lucide="${data.icons.play}" class="w-16 h-16 opacity-30 mb-2" data-editable data-editable-type="icon" data-key="play"></i>
-              <span class="text-sm font-medium">No image available</span>
-           </div>
+           ${!data.image ? `
+             <div class="tiktok-image-fallback absolute inset-0 flex flex-col items-center justify-center bg-gray-800 text-gray-300">
+                <i data-lucide="${data.icons.play}" class="w-16 h-16 opacity-30 mb-2" data-editable data-editable-type="icon" data-key="play"></i>
+                <span class="text-sm font-medium">No image available</span>
+             </div>
+           ` : ''}
            ${data.image
-             ? `<img src="${data.image}" class="w-full h-full object-cover opacity-80 relative z-[1]" alt="News Image" onerror="this.remove()" />`
+             ? `<img src="${data.image}" class="w-full h-full object-cover relative z-[1]" alt="News Image" onerror="this.remove()" />`
              : ''
            }
         </div>

@@ -482,6 +482,7 @@ var rSpeed=1;
 var rLastTs=null;
 var rMode='replay';
 var TRAIL_LEN=30;
+var rActivePostId=null;
 
 var rCanvas=document.getElementById('replayCanvas');
 var rCtx=rCanvas.getContext('2d');
@@ -910,6 +911,23 @@ function rRoundRect(x,y,w,h,r){
   rCtx.quadraticCurveTo(x,y,x+r,y);rCtx.closePath();
 }
 
+function rDrawSinglePostBg(g){
+  var W=rCanvas.width,H=rCanvas.height;
+  rCtx.fillStyle='#fafafa';rCtx.fillRect(0,0,W,H);
+  if(!g||!studyData||!studyData.posts) return;
+  var post=(studyData.posts||[]).find(function(p){return p&&p.index===g.postId;});
+  if(!post) return;
+  var cw=Math.min(W*0.86,640);
+  cw=Math.max(280,Math.min(cw,W-24));
+  var plat=post.platform||g.platform||'instagram';
+  var hDoc=rCardH(plat,cw);
+  var cardHCanvas=hDoc/VP_H_EST*H;
+  var yCanvas=Math.max(16,(H-cardHCanvas)/2);
+  var docY=yCanvas*VP_H_EST/H;
+  var xCanvas=(W-cw)/2;
+  rMockCard(post,xCanvas,docY,cw,hDoc,g.scrollY||0);
+}
+
 /* draw the full feed background at current scrollY */
 function rDrawFeedBg(scrollY){
   var W=rCanvas.width,H=rCanvas.height;
@@ -925,14 +943,6 @@ function rDrawFeedBg(scrollY){
   var sbTop=rDocY(48,scrollY),sbH=rDocY(164,scrollY)-sbTop;
   if(sbH>0&&sbTop<H){
     rCtx.fillStyle='#ffffff';rCtx.fillRect(0,sbTop,W,sbH);
-    /* story circles */
-    var sBg=['#e1306c','#1d9bf0','#1877f2','#ff0050','#10b981','#f59e0b'];
-    for(var si=0;si<6;si++){
-      var scX=W*0.12+si*(W*0.13),scY=sbTop+sbH/2,scR=Math.min(sbH*0.32,20);
-      rCtx.beginPath();rCtx.arc(scX,scY,scR,0,Math.PI*2);
-      rCtx.fillStyle=sBg[si%sBg.length]+'22';rCtx.fill();
-      rCtx.strokeStyle=sBg[si%sBg.length];rCtx.lineWidth=1.5;rCtx.stroke();
-    }
   }
 
   /* post cards */
@@ -973,7 +983,7 @@ function rGazeXY(sx,sy){return{x:sx/100*rCanvas.width,y:sy/100*rCanvas.height};}
 
 function rBuildHeatmap(upToMs){
   rHmCtx.clearRect(0,0,rHmCanvas.width,rHmCanvas.height);
-  replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;}).forEach(function(g){
+  replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null&&g.postId===rActivePostId;}).forEach(function(g){
     var p=rGazeXY(g.sx,g.sy);var r=42;
     var grad=rHmCtx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
     grad.addColorStop(0,'rgba(220,50,0,0.38)');
@@ -985,7 +995,7 @@ function rBuildHeatmap(upToMs){
 }
 
 function rDrawTrail(upToMs){
-  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;}).slice(-TRAIL_LEN);
+  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null&&g.postId===rActivePostId;}).slice(-TRAIL_LEN);
   if(pts.length<2) return;
   for(var i=1;i<pts.length;i++){
     var a=rGazeXY(pts[i-1].sx,pts[i-1].sy);
@@ -1017,7 +1027,7 @@ function rDrawDot(g){
 }
 
 function rDrawScanpath(upToMs){
-  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null;});
+  var pts=replayFrames.filter(function(g){return g.ms<=upToMs&&g.sx!=null&&g.postId===rActivePostId;});
   if(pts.length<2) return;
   rCtx.beginPath();
   var f=rGazeXY(pts[0].sx,pts[0].sy);rCtx.moveTo(f.x,f.y);
@@ -1063,8 +1073,10 @@ function rUpdateUI(g){
 function rRender(ms){
   if(!rCanvas.width||!replayFrames.length) return;
   var g=rGetFrame(ms);
+  var nextPostId=g?g.postId:null;
+  if(nextPostId!==rActivePostId){rActivePostId=nextPostId;rHmDirty=true;}
   rCtx.clearRect(0,0,rCanvas.width,rCanvas.height);
-  rDrawFeedBg(g?g.scrollY:0);
+  rDrawSinglePostBg(g);
   if(rMode==='scanpath'){
     rDrawScanpath(ms);rDrawDot(g);
   } else if(rMode==='heatmap'){
@@ -1096,11 +1108,11 @@ function rAnimate(timestamp){
 function buildReplayTimeline(){
   var segs=document.getElementById('rSegs');segs.innerHTML='';
   if(!replayFrames.length) return;
-  var lastPlat=replayFrames[0].platform,segStart=0,segments=[];
+  var lastPlat=replayFrames[0].platform,lastPost=replayFrames[0].postId,segStart=0,segments=[];
   for(var i=1;i<replayFrames.length;i++){
-    if(replayFrames[i].platform!==lastPlat||i===replayFrames.length-1){
-      segments.push({platform:lastPlat,from:segStart,to:replayFrames[i].ms});
-      lastPlat=replayFrames[i].platform;segStart=replayFrames[i].ms;
+    if(replayFrames[i].platform!==lastPlat||replayFrames[i].postId!==lastPost||i===replayFrames.length-1){
+      segments.push({platform:lastPlat,postId:lastPost,from:segStart,to:replayFrames[i].ms});
+      lastPlat=replayFrames[i].platform;lastPost=replayFrames[i].postId;segStart=replayFrames[i].ms;
     }
   }
   segments.forEach(function(s){

@@ -1888,6 +1888,16 @@ function submitStudyData(payload){
 }
 
 function collectQuestionAnswers(){
+  if(studyData&&studyData.answerMap){
+    var keys=Object.keys(studyData.answerMap);
+    if(keys.length){
+      var out=[];
+      keys.sort(function(a,b){return Number(a)-Number(b);}).forEach(function(k){
+        (studyData.answerMap[k]||[]).forEach(function(e){out.push(e);});
+      });
+      if(out.length) return out;
+    }
+  }
   var answers=[];
   document.querySelectorAll('.participant-question-input:checked').forEach(function(input){
     var postIndex=Number(input.getAttribute('data-post-index'));
@@ -1939,7 +1949,8 @@ function fbt(v){return v.toUpperCase();}
 function avl(u,fb){return((u||'').trim().charAt(0)||fb).toUpperCase();}
 function animCount(el,add){if(!el)return;el.textContent=add?'+1':'-1';el.classList.remove('show');void el.offsetWidth;el.classList.add('show');}
 function commentLines(data,limit){
-  var items=limit?data.commentsList.slice(0,limit):data.commentsList;
+  var list=Array.isArray(data&&data.commentsList)?data.commentsList:[];
+  var items=limit?list.slice(0,limit):list;
   return items.map(function(t,i){return'<div class="comment-line"><span class="comment-username">user_'+String.fromCharCode(97+i)+'</span>'+t+'</div>';}).join('');
 }
 function lucideIcon(name, cls) {
@@ -2050,6 +2061,13 @@ function mkQuestionBlock(data, theme) {
   var isDark = theme === 'dark';
   var choiceType = questionBlock.type === 'multiple' ? 'checkbox' : 'radio';
   var questionName = 'question-' + eh(data.prototypePostId || data.id || '');
+  var postIndex = data.__postIndex != null ? Number(data.__postIndex) : null;
+  var storedSet = {};
+  if (studyData && studyData.answerMap && postIndex != null && studyData.answerMap[postIndex]) {
+    (studyData.answerMap[postIndex] || []).forEach(function (entry) {
+      if (entry && entry.optionId) storedSet[String(entry.optionId)] = true;
+    });
+  }
 
   return '' +
     '<div class="' + (isDark ? 'participant-question participant-question-dark' : 'participant-question participant-question-light') + '">' +
@@ -2059,9 +2077,10 @@ function mkQuestionBlock(data, theme) {
       '</div>' +
       '<div class="participant-question-options">' +
         questionBlock.options.map(function (option, optionIndex) {
+          var checked = storedSet[String(option.id)] ? ' checked' : '';
           return '' +
             '<label class="' + (isDark ? 'participant-question-option participant-question-option-dark' : 'participant-question-option participant-question-option-light') + '">' +
-              '<input type="' + choiceType + '" name="' + questionName + '" value="' + eh(option.id) + '" data-news-index="' + eh(data.newsIndex || '') + '" data-post-index="' + eh(data.__postIndex != null ? data.__postIndex : '') + '" data-option-index="' + optionIndex + '" class="participant-question-input" />' +
+              '<input type="' + choiceType + '" name="' + questionName + '" value="' + eh(option.id) + '"' + checked + ' data-news-index="' + eh(data.newsIndex || '') + '" data-post-index="' + eh(data.__postIndex != null ? data.__postIndex : '') + '" data-option-index="' + optionIndex + '" class="participant-question-input" />' +
               '<span>' + eh(option.label) + '</span>' +
             '</label>';
         }).join('') +
@@ -2569,6 +2588,26 @@ document.addEventListener('click',function(e){
   if(e.target.closest('.detail-like-btn')){doDetailLike();}
 });
 pO.addEventListener('click',function(e){if(e.target===pO)closeDetail();});
+
+document.addEventListener('change',function(e){
+  var input=e.target.closest('.participant-question-input');
+  if(!input||!studyData) return;
+  var postIndex=Number(input.getAttribute('data-post-index'));
+  if(postIndex==null||Number.isNaN(postIndex)) return;
+  var post=postData[postIndex]||{};
+  var entries=[];
+  document.querySelectorAll('.participant-question-input[data-post-index="'+postIndex+'"]:checked').forEach(function(node){
+    var optionIndex=node.getAttribute('data-option-index');
+    entries.push({
+      newsIndex:Number(node.getAttribute('data-news-index')||post.newsIndex||postIndex+1),
+      postId:post.id||null,
+      optionId:node.value||null,
+      optionIndex:optionIndex==null?null:Number(optionIndex)
+    });
+  });
+  studyData.answerMap=studyData.answerMap||{};
+  studyData.answerMap[postIndex]=entries;
+},true);
 </script>
 </body>
 </html>
