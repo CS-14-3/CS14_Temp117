@@ -1603,14 +1603,45 @@ function showValidationResults(){
 /* ══════════════════════════════════════════════════
    TRANSITION: CALIBRATION → STUDY
 ══════════════════════════════════════════════════ */
-function enterStudy(){
-  // Stop calibration frame loop, hand camera stream to study pip
-  sendingFrames=false;
-  hide('calScreen');
-  show('mainPage');
+function showPostTranslationLoading(){
+  if (!participantFeed) return;
+  participantFeed.innerHTML =
+    '<div class="prototype2-empty-platform">' + eh(pt('language.translating')) + '</div>';
+}
+
+function markPostTranslationUnavailable(error){
+  console.warn('Post translation failed:', error);
+  var failedCacheKey = getPostTranslationCacheKey();
+  participantPostTranslationCache[failedCacheKey] = {
+    entries: {}
+  };
+}
+
+function ensurePostTranslationsReady(){
+  if (participantLocale === 'en') {
+    return Promise.resolve(true);
+  }
+
+  var postCacheKey = getPostTranslationCacheKey();
+  if (participantPostTranslationCache[postCacheKey]) {
+    return Promise.resolve(true);
+  }
+
+  showPostTranslationLoading();
+  return ensureParticipantPostTranslation(participantLocale)
+    .catch(function (error) {
+      markPostTranslationUnavailable(error);
+      return true;
+    });
+}
+
+function startStudyCapture(){
   document.getElementById('gaze-hud').style.display='flex';
-  document.getElementById('study-id-badge').textContent='ID: '+participantId;
   appPhase='STUDY';
+
+  var finishBtn=document.getElementById('btn-finish-study');
+  if(finishBtn){finishBtn.disabled=false;finishBtn.textContent=pt('study.finish');}
+
   // Reuse the same camera stream in the study pip video element
   var studyVideoEl=document.getElementById('study-video');
   studyVideoEl.srcObject=calVideo.srcObject;
@@ -1627,7 +1658,24 @@ function enterStudy(){
   studySendCv.width=320; studySendCv.height=240;
   studySendingFrames=true;
   requestAnimationFrame(studyCaptureAndSend);
-  renderFeed();
+}
+
+function enterStudy(){
+  // Stop calibration frame loop, prepare translated feed, then hand camera stream to study pip.
+  sendingFrames=false;
+  hide('calScreen');
+  show('mainPage');
+  document.getElementById('gaze-hud').style.display='none';
+  document.getElementById('study-id-badge').textContent='ID: '+participantId;
+  appPhase='STUDY_PREPARING';
+
+  var finishBtn=document.getElementById('btn-finish-study');
+  if(finishBtn){finishBtn.disabled=true;finishBtn.textContent=pt('language.translating');}
+
+  ensurePostTranslationsReady().then(function(){
+    renderFeed();
+    startStudyCapture();
+  });
 }
 
 /* ══════════════════════════════════════════════════
@@ -1882,9 +1930,24 @@ function submitStudyData(payload){
   return fetch('/api/study-submit', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(payload),
-    keepalive:true
-  }).then(function(resp){ return resp.json().catch(function(){ return {success:resp.ok}; }); });
+    body:JSON.stringify(payload)
+  }).then(function(resp){
+    return resp.text().then(function(text){
+      var result={};
+      if(text){
+        try {
+          result=JSON.parse(text);
+        } catch (_) {
+          result={success:false,error:text};
+        }
+      }
+      if(!resp.ok){
+        result.success=false;
+        result.error=result.error||('HTTP '+resp.status+' '+resp.statusText);
+      }
+      return result;
+    });
+  });
 }
 
 function collectQuestionAnswers(){
@@ -2326,21 +2389,14 @@ function renderFeed() {
   var postCacheKey = getPostTranslationCacheKey();
 
   if (!participantPostTranslationCache[postCacheKey]) {
-    participantFeed.innerHTML =
-      '<div class="prototype2-empty-platform">' + eh(pt('language.translating')) + '</div>';
+    showPostTranslationLoading();
 
     ensureParticipantPostTranslation(participantLocale)
   .then(function () {
     renderFeed();
   })
   .catch(function (error) {
-    console.warn('Post translation failed:', error);
-
-    var failedCacheKey = getPostTranslationCacheKey();
-    participantPostTranslationCache[failedCacheKey] = {
-      entries: {}
-    };
-
+    markPostTranslationUnavailable(error);
     renderFeed();
   });
 
