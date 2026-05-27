@@ -1,4 +1,4 @@
-# Researcher and Participant Study Prototype
+# Researcher and Participant Study
 
 A local web prototype for running researcher-led social media study sessions. The project connects a researcher authoring interface, invite-code publishing, participant onboarding, camera calibration, and a participant feed styled after common social platforms.
 
