@@ -1207,6 +1207,32 @@ function bindSurveyToEditor(survey) {
   rememberCurrentNewsVersion();
 }
 
+function resetEditorDraftState() {
+  surveyState.currentNewsIndex = 0;
+  surveyState.currentVersion = 'vA';
+  surveyState.news = [createDefaultNews('instagram')];
+}
+
+function isFinalizedSurvey(survey) {
+  if (!survey || typeof survey !== 'object') {
+    return false;
+  }
+
+  const status = String(survey.status || '').toLowerCase();
+  return status === 'published'
+    || status === 'completed'
+    || Boolean(survey.publishedAt || survey.completedAt || survey.publishedSnapshot)
+    || (Array.isArray(survey.publishedPosts) && survey.publishedPosts.length > 0);
+}
+
+function persistAppStateSnapshot() {
+  try {
+    localStorage.setItem(getAppStateStorageKey(), JSON.stringify(appState));
+  } catch (error) {
+    console.warn('Unable to save survey data:', error);
+  }
+}
+
 function saveAppStateToLocalStorage() {
   rememberCurrentNewsVersion();
   syncSurveyPlatformVariants();
@@ -1215,11 +1241,7 @@ function saveAppStateToLocalStorage() {
     currentSurvey.news = surveyState.news;
   }
 
-  try {
-    localStorage.setItem(getAppStateStorageKey(), JSON.stringify(appState));
-  } catch (error) {
-    console.warn('Unable to save survey data:', error);
-  }
+  persistAppStateSnapshot();
 }
 
 function loadAppStateFromLocalStorage() {
@@ -1235,13 +1257,28 @@ function loadAppStateFromLocalStorage() {
     appState.surveys = parsedState.surveys.map(normalizeSurvey);
     appState.currentSurveyId = typeof parsedState.currentSurveyId === 'string'
       ? parsedState.currentSurveyId
-      : appState.surveys[0].id;
+      : null;
 
-    if (!getCurrentSurvey()) {
-      appState.currentSurveyId = appState.surveys[0].id;
+    let currentSurvey = getCurrentSurvey();
+    let shouldPersistSelection = false;
+
+    if (!currentSurvey || isFinalizedSurvey(currentSurvey)) {
+      const draftSurvey = appState.surveys.find((survey) => !isFinalizedSurvey(survey));
+      appState.currentSurveyId = draftSurvey ? draftSurvey.id : null;
+      currentSurvey = draftSurvey || null;
+      shouldPersistSelection = true;
     }
 
-    bindSurveyToEditor(getCurrentSurvey());
+    if (currentSurvey) {
+      bindSurveyToEditor(currentSurvey);
+    } else {
+      resetEditorDraftState();
+    }
+
+    if (shouldPersistSelection) {
+      persistAppStateSnapshot();
+    }
+
     return true;
   } catch (error) {
     console.warn('Unable to load survey data:', error);
@@ -1274,9 +1311,7 @@ async function initializeAppState() {
 
   appState.surveys = [];
   appState.currentSurveyId = null;
-  surveyState.currentNewsIndex = 0;
-  surveyState.currentVersion = 'vA';
-  surveyState.news = [createDefaultNews('instagram')];
+  resetEditorDraftState();
 }
 
 function showParticipantCompletionNotification(survey) {
@@ -3795,17 +3830,21 @@ tabs.forEach(tab => {
   });
 });
 
+async function bootstrapApp() {
+  await initializeAppState();
+  ensureCreateSurveyButton();
+  bindNoSurveyEditGuard();
+  applyStaticTranslations();
+  updateLanguageMenuState();
+  startParticipantGazeDataListeners();
+  bindPublishSurveyButton();
+  bindNewSurveyNavigation();
+  bindProfileNavigation();
+  bindHistoryNavigation();
+  bindResultsNavigation();
+  lucide.createIcons(); // 初始化页面中固定的图标 (如导航栏)
+  renderAll();
+}
+
 // --- 初始化执行 ---
-initializeAppState();
-ensureCreateSurveyButton();
-bindNoSurveyEditGuard();
-applyStaticTranslations();
-updateLanguageMenuState();
-startParticipantGazeDataListeners();
-bindPublishSurveyButton();
-bindNewSurveyNavigation();
-bindProfileNavigation();
-bindHistoryNavigation();
-bindResultsNavigation();
-lucide.createIcons(); // 初始化页面中固定的图标 (如导航栏)
-renderAll();
+bootstrapApp();
