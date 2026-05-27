@@ -10,7 +10,7 @@ const UI_LOCALE_LABELS = {
 };
 
 const UI_TEXT = {
-  'account.manage': 'Manage Survey Architect Account',
+  'account.manage': 'Manage Survey Lab Account',
   'account.addAnother': 'Add another account',
   'account.signOut': 'Sign out',
   'account.legal': 'Privacy Policy • Terms of Service',
