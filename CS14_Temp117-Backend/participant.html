@@ -837,7 +837,7 @@ const PARTICIPANT_UI_TEXT = {
   'language.translating': 'Translating...'
 };
 
-let participantLocale = localStorage.getItem('participantLocale') || 'en';
+let participantLocale = 'en';
 let participantUiTranslationCache = readParticipantJson(PARTICIPANT_UI_TRANSLATION_CACHE_KEY, {});
 let participantPostTranslationCache = readParticipantJson(PARTICIPANT_POST_TRANSLATION_CACHE_KEY, {});
 
@@ -1109,7 +1109,6 @@ async function changeParticipantLocale(locale) {
 
   const previousLocale = participantLocale;
   participantLocale = locale;
-  localStorage.setItem('participantLocale', locale);
 
   try {
     await ensureParticipantUiTranslation(locale);
@@ -1131,7 +1130,6 @@ async function changeParticipantLocale(locale) {
     }
   } catch (error) {
     participantLocale = previousLocale;
-    localStorage.setItem('participantLocale', previousLocale);
     applyParticipantStaticTranslations();
     alert(error.message || pt('language.translationFailed'));
   }
